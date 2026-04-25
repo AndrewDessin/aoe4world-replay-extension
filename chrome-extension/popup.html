@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 360px;
+      background: #1a1a1a;
+      color: #e9ecef;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      margin: 0;
+      padding: 12px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .empty {
+      color: #6c757d;
+      text-align: center;
+      padding: 24px 0;
+    }
+    .fav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border-bottom: 1px solid #333;
+    }
+    .fav-item:last-child { border-bottom: none; }
+    .fav-info { flex: 1; min-width: 0; }
+    .fav-header { font-weight: 600; }
+    .fav-header a { color: #4dabf7; text-decoration: none; }
+    .fav-header a:hover { text-decoration: underline; }
+    .fav-sub { color: #adb5bd; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fav-date { color: #6c757d; font-size: 11px; }
+    .fav-actions { display: flex; gap: 6px; }
+    .btn {
+      background: none;
+      border: 1px solid #495057;
+      color: #e9ecef;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn:hover { background: #333; }
+    .btn-play { border-color: #2ea043; color: #2ea043; }
+    .btn-play:hover { background: #2ea04320; }
+    .btn-del { border-color: #dc3545; color: #dc3545; }
+    .btn-del:hover { background: #dc354520; }
+    .count { color: #6c757d; font-size: 12px; font-weight: normal; }
+  </style>
+</head>
+<body>
+  <h2>&#9733; Saved Replays <span class="count" id="count"></span></h2>
+  <div id="list"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

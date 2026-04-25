@@ -1,0 +1,32 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Force Node.js 24
+        run: echo "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true" >> $GITHUB_ENV
+
+      - name: Pack Chrome extension zip
+        run: cd chrome-extension && zip -r ../chrome-extension-store.zip .
+
+      - name: Pack native host installer zip
+        run: cd native-host && zip -r ../aoe4-replay-launcher.zip .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            chrome-extension-store.zip
+            aoe4-replay-launcher.zip
+          generate_release_notes: true
