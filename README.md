@@ -16,7 +16,9 @@ Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4worl
 
 ### 1. Install the Chrome/Edge extension
 
-1. Download the latest `chrome-extension-store.zip` from [Releases](https://github.com/spartain-aoe/aoe4world-replay-extension/releases/latest)
+**From the Chrome Web Store:** [AoE4 Replay Launcher](https://chromewebstore.google.com/detail/ckkbdeejodfnpehhllhmhhannpgojfec)
+
+Or load manually:1. Download the latest `chrome-extension-store.zip` from [Releases](https://github.com/spartain-aoe/aoe4world-replay-extension/releases/latest)
 2. Extract it
 3. Open `chrome://extensions/` (or `edge://extensions/`)
 4. Enable **Developer mode** (top right)
