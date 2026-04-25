@@ -3,16 +3,17 @@ const CACHE_TTL = 24 * 60 * 60 * 1000;
 const pendingChecks = new Map();
 
 async function getCached(gameId) {
-  const key = 'replay_' + gameId;
-  const result = await chrome.storage.local.get(key);
-  const entry = result[key];
-  if (!entry) return undefined;
-  
-  // If we have a patch, evaluate against current known patches
-  if (entry.patch && entry.value) {
-    const patchResp = await new Promise(resolve => {
-      chrome.runtime.sendMessage({ type: 'getCurrentPatch' }, resp => resolve(resp));
-    });
+  try {
+    const key = 'replay_' + gameId;
+    const result = await chrome.storage.local.get(key);
+    const entry = result[key];
+    if (!entry) return undefined;
+    
+    // If we have a patch, evaluate against current known patches
+    if (entry.patch && entry.value) {
+      const patchResp = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'getCurrentPatch' }, resp => resolve(resp));
+      });
     const curPatch = patchResp?.patch;
     if (curPatch) {
       if (entry.patch === curPatch) return { available: true, prevPatch: false };
@@ -35,11 +36,17 @@ async function getCached(gameId) {
   if (entry.value === true) return { available: true, prevPatch: false };
   if (entry.value === 'prev') return { available: true, prevPatch: true };
   return { available: false, prevPatch: false };
+  } catch (e) {
+    // Extension context invalidated (e.g. after idle/reload)
+    return undefined;
+  }
 }
 
 function setCache(gameId, available, permanent = false, patch = null) {
-  const key = 'replay_' + gameId;
-  chrome.storage.local.set({ [key]: { value: available, time: Date.now(), permanent, patch } });
+  try {
+    const key = 'replay_' + gameId;
+    chrome.storage.local.set({ [key]: { value: available, time: Date.now(), permanent, patch } });
+  } catch (e) { /* context invalidated */ }
 }
 
 // Batched check with dedup — collects IDs for 100ms then fires one request
