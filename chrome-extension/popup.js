@@ -54,7 +54,7 @@ function render(favorites, count, max) {
       e.preventDefault();
       const url = a.dataset.url;
       if (url && url !== '#') {
-        chrome.tabs.create({ url });
+        window.open(url, '_blank');
       }
     });
   });

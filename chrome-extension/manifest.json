@@ -3,7 +3,7 @@
   "name": "AoE4 Replay Launcher",
   "version": "0.3",
   "description": "Watch any AoE4 replay directly from aoe4world.com. One-click download and launch into Age of Empires IV.",
-  "permissions": ["storage", "nativeMessaging", "tabs"],
+  "permissions": ["storage", "nativeMessaging"],
   "host_permissions": [
     "https://aoe-api.worldsedgelink.com/*",
     "https://rl0aoelivemk2blob.blob.core.windows.net/*"
