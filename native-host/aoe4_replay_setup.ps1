@@ -38,7 +38,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0aoe4_replay_host.p
 $ps1Path = Join-Path $InstallDir 'aoe4_replay_host.ps1'
 @'
 $REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles'
-$UA = 'AoE4ReplayLauncher/0.3 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)'
+$UA = 'AoE4ReplayLauncher/0.4 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)'
 $AOE4_STEAM_ID = '1466860'
 $docsDir = [Environment]::GetFolderPath('MyDocuments')
 $playbackDir = Join-Path $docsDir 'My Games\Age of Empires IV\playback'

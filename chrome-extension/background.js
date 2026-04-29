@@ -1,6 +1,6 @@
 const REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles';
 const PATCH_API = 'https://aoe4world.com/api/v0/stats/rm_solo/civilizations';
-const UA = 'AoE4ReplayLauncher-ChromeExt/0.3 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
+const UA = 'AoE4ReplayLauncher-ChromeExt/0.4 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
 const NATIVE_HOST = 'com.aoe4.replay_launcher';
 const MAX_FAVORITES = 10;
 
