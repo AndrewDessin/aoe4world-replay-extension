@@ -1,0 +1,75 @@
+{
+  "chunkVersion": 60,
+  "headerPlayerCount": 4,
+  "heuristic": [
+    {
+      "slot": 0,
+      "name": "jaskara",
+      "civilization": "templar",
+      "playerId": "76561199720145745",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 1,
+      "name": "Spartaint",
+      "civilization": "chinese",
+      "playerId": "76561199772306526",
+      "color": 5,
+      "colorName": "Purple"
+    },
+    {
+      "slot": 2,
+      "name": "Mr Socionomics",
+      "civilization": "japanese_ha_sen",
+      "playerId": "2533274807948215",
+      "color": 0,
+      "colorName": "Blue"
+    },
+    {
+      "slot": 3,
+      "name": "办公室禁止谈恋爱",
+      "civilization": "sultanate_ha_tug",
+      "playerId": "76561199513850308",
+      "color": 7,
+      "colorName": "Pink"
+    }
+  ],
+  "heuristicError": null,
+  "structural": [
+    {
+      "slot": 0,
+      "name": "jaskara",
+      "civilization": "templar",
+      "playerId": "76561199720145745",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 1,
+      "name": "Spartaint",
+      "civilization": "chinese",
+      "playerId": "76561199772306526",
+      "color": 5,
+      "colorName": "Purple"
+    },
+    {
+      "slot": 2,
+      "name": "Mr Socionomics",
+      "civilization": "japanese_ha_sen",
+      "playerId": "2533274807948215",
+      "color": 0,
+      "colorName": "Blue"
+    },
+    {
+      "slot": 3,
+      "name": "办公室禁止谈恋爱",
+      "civilization": "sultanate_ha_tug",
+      "playerId": "76561199513850308",
+      "color": 7,
+      "colorName": "Pink"
+    }
+  ],
+  "structuralError": null,
+  "structuralWarnings": []
+}

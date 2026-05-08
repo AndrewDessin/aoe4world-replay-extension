@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
   "name": "AoE4 Replay Launcher",
-  "version": "0.4",
+  "version": "0.14",
   "description": "Watch any AoE4 replay directly from aoe4world.com. One-click download and launch into Age of Empires IV.",
   "permissions": ["storage", "nativeMessaging"],
   "host_permissions": [
     "https://aoe-api.worldsedgelink.com/*",
-    "https://rl0aoelivemk2blob.blob.core.windows.net/*"
+    "https://rl0aoelivemk2blob.blob.core.windows.net/*",
+    "https://raw.githubusercontent.com/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html",
@@ -17,6 +19,11 @@
     "default_title": "AoE4 Saved Replays"
   },
   "content_scripts": [
+    {
+      "matches": ["https://aoe4world.com/players/*/games/*"],
+      "js": ["early-hide.js"],
+      "run_at": "document_start"
+    },
     {
       "matches": ["https://aoe4world.com/*"],
       "js": ["content.js"],
@@ -27,5 +34,11 @@
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["chart-injector.js", "data/pbgid-map.json"],
+      "matches": ["https://aoe4world.com/*"]
+    }
+  ]
 }

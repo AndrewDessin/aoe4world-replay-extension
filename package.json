@@ -1,0 +1,29 @@
+{
+  "name": "aoe4-replay-share-api-charts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:data": "node scripts/build-pbgid-map.mjs",
+    "build:data:strict": "node scripts/build-pbgid-map.mjs --strict",
+    "build:content": "node scripts/build-content.mjs",
+    "build": "npm run build:data && npm run build:content",
+    "dev:content": "node scripts/build-content.mjs --watch",
+    "test:fixtures": "node scripts/check-fixtures.mjs",
+    "test:adversarial": "node scripts/check-adversarial.mjs",
+    "test:unit": "node --experimental-strip-types --test \"tests/unit/*.test.mjs\"",
+    "test:regression": "node --experimental-strip-types --test \"tests/regression/*.test.mjs\"",
+    "test": "npm run test:fixtures && npm run test:adversarial && npm run build:content && node --experimental-strip-types --test \"tests/unit/*.test.mjs\" \"tests/regression/*.test.mjs\"",
+    "coverage": "node --experimental-strip-types --experimental-test-coverage --test-coverage-include=\"src/**\" --test \"tests/unit/*.test.mjs\" \"tests/regression/*.test.mjs\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.42",
+    "esbuild": "^0.28.0",
+    "linkedom": "^0.18.12",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

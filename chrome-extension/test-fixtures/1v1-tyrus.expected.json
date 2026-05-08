@@ -1,0 +1,43 @@
+{
+  "chunkVersion": 60,
+  "headerPlayerCount": 2,
+  "heuristic": [
+    {
+      "slot": 0,
+      "name": "2ostad riyo",
+      "civilization": "ottoman",
+      "playerId": "76561199652901962",
+      "color": 7,
+      "colorName": "Pink"
+    },
+    {
+      "slot": 1,
+      "name": "TyrusLunarspear",
+      "civilization": "chinese",
+      "playerId": "76561198092584942",
+      "color": 4,
+      "colorName": "Teal"
+    }
+  ],
+  "heuristicError": null,
+  "structural": [
+    {
+      "slot": 0,
+      "name": "2ostad riyo",
+      "civilization": "ottoman",
+      "playerId": "76561199652901962",
+      "color": 7,
+      "colorName": "Pink"
+    },
+    {
+      "slot": 1,
+      "name": "TyrusLunarspear",
+      "civilization": "chinese",
+      "playerId": "76561198092584942",
+      "color": 4,
+      "colorName": "Teal"
+    }
+  ],
+  "structuralError": null,
+  "structuralWarnings": []
+}

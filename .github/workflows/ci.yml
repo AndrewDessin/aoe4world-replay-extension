@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        # npm test chains: fixtures → adversarial → build:content → unit + regression
+        # build:data is intentionally skipped — committed pbgid-map.json is the
+        # source of truth and the build:data script needs network access to
+        # raw.githubusercontent.com.
+        run: npm test

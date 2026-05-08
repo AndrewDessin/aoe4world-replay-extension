@@ -1,0 +1,139 @@
+{
+  "chunkVersion": 60,
+  "headerPlayerCount": 8,
+  "heuristic": [
+    {
+      "slot": 0,
+      "name": "Polytope0117",
+      "civilization": "japanese_ha_sen",
+      "playerId": "1502654554562979183",
+      "color": 7,
+      "colorName": "Pink"
+    },
+    {
+      "slot": 1,
+      "name": "Spartaint",
+      "civilization": "chinese",
+      "playerId": "76561199772306526",
+      "color": 5,
+      "colorName": "Purple"
+    },
+    {
+      "slot": 2,
+      "name": "aaa",
+      "civilization": "japanese",
+      "playerId": "76561198066118236",
+      "color": 6,
+      "colorName": "Orange"
+    },
+    {
+      "slot": 3,
+      "name": "lurey",
+      "civilization": "chinese_ha_01",
+      "playerId": "76561198128411560",
+      "color": 0,
+      "colorName": "Blue"
+    },
+    {
+      "slot": 4,
+      "name": "sLy♛",
+      "civilization": "japanese",
+      "playerId": "76561197978893603",
+      "color": 2,
+      "colorName": "Yellow"
+    },
+    {
+      "slot": 5,
+      "name": "EightThousand",
+      "civilization": "hre_ha_01",
+      "playerId": "76561198822780888",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 6,
+      "name": "Metebey",
+      "civilization": "hre",
+      "playerId": "76561198356275242",
+      "color": 3,
+      "colorName": "Green"
+    },
+    {
+      "slot": 7,
+      "name": "童4315",
+      "civilization": "english",
+      "playerId": "76561199179316032",
+      "color": 4,
+      "colorName": "Teal"
+    }
+  ],
+  "heuristicError": null,
+  "structural": [
+    {
+      "slot": 0,
+      "name": "Polytope0117",
+      "civilization": "japanese_ha_sen",
+      "playerId": "1502654554562979183",
+      "color": 7,
+      "colorName": "Pink"
+    },
+    {
+      "slot": 1,
+      "name": "Spartaint",
+      "civilization": "chinese",
+      "playerId": "76561199772306526",
+      "color": 5,
+      "colorName": "Purple"
+    },
+    {
+      "slot": 2,
+      "name": "aaa",
+      "civilization": "japanese",
+      "playerId": "76561198066118236",
+      "color": 6,
+      "colorName": "Orange"
+    },
+    {
+      "slot": 3,
+      "name": "lurey",
+      "civilization": "chinese_ha_01",
+      "playerId": "76561198128411560",
+      "color": 0,
+      "colorName": "Blue"
+    },
+    {
+      "slot": 4,
+      "name": "sLy♛",
+      "civilization": "japanese",
+      "playerId": "76561197978893603",
+      "color": 2,
+      "colorName": "Yellow"
+    },
+    {
+      "slot": 5,
+      "name": "EightThousand",
+      "civilization": "hre_ha_01",
+      "playerId": "76561198822780888",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 6,
+      "name": "Metebey",
+      "civilization": "hre",
+      "playerId": "76561198356275242",
+      "color": 3,
+      "colorName": "Green"
+    },
+    {
+      "slot": 7,
+      "name": "童4315",
+      "civilization": "english",
+      "playerId": "76561199179316032",
+      "color": 4,
+      "colorName": "Teal"
+    }
+  ],
+  "structuralError": null,
+  "structuralWarnings": []
+}

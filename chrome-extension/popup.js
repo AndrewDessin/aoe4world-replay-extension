@@ -2,6 +2,44 @@ const list = document.getElementById('list');
 const countEl = document.getElementById('count');
 let currentFavorites = {}; // keep reference for re-star
 
+// ----- settings panel -----
+const SETTINGS_DEFAULTS = Object.freeze({ recolorSwatches: false, injectCharts: true, debugLogs: false });
+const settingsPanel = document.getElementById('settings');
+const settingsToggle = document.getElementById('settings-toggle');
+const optCharts = document.getElementById('opt-charts');
+const optRecolor = document.getElementById('opt-recolor');
+const optDebug = document.getElementById('opt-debug');
+const reloadHint = document.getElementById('reload-hint');
+
+settingsToggle.addEventListener('click', () => {
+  const open = !settingsPanel.classList.contains('open');
+  settingsPanel.classList.toggle('open', open);
+  settingsPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+  settingsToggle.classList.toggle('active', open);
+  settingsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+
+function loadSettingsIntoPanel() {
+  chrome.storage.local.get('settings', ({ settings }) => {
+    const merged = { ...SETTINGS_DEFAULTS, ...(settings || {}) };
+    optCharts.checked = merged.injectCharts !== false;
+    optRecolor.checked = merged.recolorSwatches === true;
+    optDebug.checked = merged.debugLogs === true;
+  });
+}
+
+async function updateOneSetting(key, value) {
+  const { settings: existing } = await chrome.storage.local.get('settings');
+  const next = { ...SETTINGS_DEFAULTS, ...(existing || {}), [key]: value };
+  await chrome.storage.local.set({ settings: next });
+  reloadHint.classList.add('show');
+}
+
+optCharts.addEventListener('change', () => updateOneSetting('injectCharts', optCharts.checked));
+optRecolor.addEventListener('change', () => updateOneSetting('recolorSwatches', optRecolor.checked));
+optDebug.addEventListener('change', () => updateOneSetting('debugLogs', optDebug.checked));
+loadSettingsIntoPanel();
+
 function render(favorites, count, max) {
   currentFavorites = favorites;
   countEl.textContent = `(${count}/${max})`;

@@ -1,0 +1,107 @@
+{
+  "chunkVersion": 60,
+  "headerPlayerCount": 6,
+  "heuristic": [
+    {
+      "slot": 0,
+      "name": "Slynk",
+      "civilization": "chinese",
+      "playerId": "76561198321225219",
+      "color": 2,
+      "colorName": "Yellow"
+    },
+    {
+      "slot": 1,
+      "name": "Per Aspera Ad Astra",
+      "civilization": "abbasid",
+      "playerId": "76561198789036322",
+      "color": 3,
+      "colorName": "Green"
+    },
+    {
+      "slot": 2,
+      "name": "Lily Rosé",
+      "civilization": "french",
+      "playerId": "76561199124932302",
+      "color": 6,
+      "colorName": "Orange"
+    },
+    {
+      "slot": 3,
+      "name": "Ferdi AOE",
+      "civilization": "french",
+      "playerId": "76561199841727843",
+      "color": 7,
+      "colorName": "Pink"
+    },
+    {
+      "slot": 4,
+      "name": "Ségurant",
+      "civilization": "japanese_ha_sen",
+      "playerId": "76561198010130379",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 5,
+      "name": "Spartain",
+      "civilization": "sultanate_ha_tug",
+      "playerId": "76561198985287322",
+      "color": 5,
+      "colorName": "Purple"
+    }
+  ],
+  "heuristicError": null,
+  "structural": [
+    {
+      "slot": 0,
+      "name": "Slynk",
+      "civilization": "chinese",
+      "playerId": "76561198321225219",
+      "color": 2,
+      "colorName": "Yellow"
+    },
+    {
+      "slot": 1,
+      "name": "Per Aspera Ad Astra",
+      "civilization": "abbasid",
+      "playerId": "76561198789036322",
+      "color": 3,
+      "colorName": "Green"
+    },
+    {
+      "slot": 2,
+      "name": "Lily Rosé",
+      "civilization": "french",
+      "playerId": "76561199124932302",
+      "color": 6,
+      "colorName": "Orange"
+    },
+    {
+      "slot": 3,
+      "name": "Ferdi AOE",
+      "civilization": "french",
+      "playerId": "76561199841727843",
+      "color": 7,
+      "colorName": "Pink"
+    },
+    {
+      "slot": 4,
+      "name": "Ségurant",
+      "civilization": "japanese_ha_sen",
+      "playerId": "76561198010130379",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 5,
+      "name": "Spartain",
+      "civilization": "sultanate_ha_tug",
+      "playerId": "76561198985287322",
+      "color": 5,
+      "colorName": "Purple"
+    }
+  ],
+  "structuralError": null,
+  "structuralWarnings": []
+}

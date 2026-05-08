@@ -1,0 +1,139 @@
+{
+  "chunkVersion": 60,
+  "headerPlayerCount": 8,
+  "heuristic": [
+    {
+      "slot": 0,
+      "name": "ZhaBen",
+      "civilization": "hre_ha_01",
+      "playerId": "76561198934764767",
+      "color": 3,
+      "colorName": "Green"
+    },
+    {
+      "slot": 1,
+      "name": "无产铁拳",
+      "civilization": "sultanate_ha_tug",
+      "playerId": "76561198021050864",
+      "color": 4,
+      "colorName": "Teal"
+    },
+    {
+      "slot": 2,
+      "name": "Mous-olini",
+      "civilization": "chinese_ha_01",
+      "playerId": "76561198208583896",
+      "color": 2,
+      "colorName": "Yellow"
+    },
+    {
+      "slot": 3,
+      "name": "墨斗鱼",
+      "civilization": "templar",
+      "playerId": "76561199024065537",
+      "color": 0,
+      "colorName": "Blue"
+    },
+    {
+      "slot": 4,
+      "name": "lukotelz",
+      "civilization": "hre",
+      "playerId": "76561198068893016",
+      "color": 5,
+      "colorName": "Purple"
+    },
+    {
+      "slot": 5,
+      "name": "sweetfinger",
+      "civilization": "ottoman",
+      "playerId": "76561198048500333",
+      "color": 6,
+      "colorName": "Orange"
+    },
+    {
+      "slot": 6,
+      "name": "[GCDC]RwiAng",
+      "civilization": "abbasid",
+      "playerId": "76561198057455403",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 7,
+      "name": "I'm really Newbie",
+      "civilization": "chinese_ha_01",
+      "playerId": "76561198017901538",
+      "color": 7,
+      "colorName": "Pink"
+    }
+  ],
+  "heuristicError": null,
+  "structural": [
+    {
+      "slot": 0,
+      "name": "ZhaBen",
+      "civilization": "hre_ha_01",
+      "playerId": "76561198934764767",
+      "color": 3,
+      "colorName": "Green"
+    },
+    {
+      "slot": 1,
+      "name": "无产铁拳",
+      "civilization": "sultanate_ha_tug",
+      "playerId": "76561198021050864",
+      "color": 4,
+      "colorName": "Teal"
+    },
+    {
+      "slot": 2,
+      "name": "Mous-olini",
+      "civilization": "chinese_ha_01",
+      "playerId": "76561198208583896",
+      "color": 2,
+      "colorName": "Yellow"
+    },
+    {
+      "slot": 3,
+      "name": "墨斗鱼",
+      "civilization": "templar",
+      "playerId": "76561199024065537",
+      "color": 0,
+      "colorName": "Blue"
+    },
+    {
+      "slot": 4,
+      "name": "lukotelz",
+      "civilization": "hre",
+      "playerId": "76561198068893016",
+      "color": 5,
+      "colorName": "Purple"
+    },
+    {
+      "slot": 5,
+      "name": "sweetfinger",
+      "civilization": "ottoman",
+      "playerId": "76561198048500333",
+      "color": 6,
+      "colorName": "Orange"
+    },
+    {
+      "slot": 6,
+      "name": "[GCDC]RwiAng",
+      "civilization": "abbasid",
+      "playerId": "76561198057455403",
+      "color": 1,
+      "colorName": "Red"
+    },
+    {
+      "slot": 7,
+      "name": "I'm really Newbie",
+      "civilization": "chinese_ha_01",
+      "playerId": "76561198017901538",
+      "color": 7,
+      "colorName": "Pink"
+    }
+  ],
+  "structuralError": null,
+  "structuralWarnings": []
+}
