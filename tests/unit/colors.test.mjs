@@ -6,10 +6,10 @@ import {
   PLAYER_COLORS, AOE4_PLAYER_COLOR_HEX,
 } from '../../src/content/colors.ts';
 
-test('validColor accepts 0..7, rejects rest', () => {
-  for (let i = 0; i < 8; i++) assert.equal(validColor(i), true, `${i} should be valid`);
+test('validColor accepts 0..9, rejects rest', () => {
+  for (let i = 0; i < 10; i++) assert.equal(validColor(i), true, `${i} should be valid`);
   assert.equal(validColor(-1), false);
-  assert.equal(validColor(8), false);
+  assert.equal(validColor(10), false);
   assert.equal(validColor(1.5), false);
   assert.equal(validColor('3'), false);
   assert.equal(validColor(null), false);
@@ -67,5 +67,5 @@ test('playerColor falls back to native then PLAYER_COLORS', () => {
   const native = new Map([['b', '#abcdef']]);
   assert.equal(playerColor({}, { name: 'B' }, 1, native), '#abcdef');
   assert.equal(playerColor({}, { name: 'C' }, 0), PLAYER_COLORS[0]);
-  assert.equal(playerColor({}, { name: 'C' }, 9), PLAYER_COLORS[1]);
+  assert.equal(playerColor({}, { name: 'C' }, 9), PLAYER_COLORS[9]);
 });

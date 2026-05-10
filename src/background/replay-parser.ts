@@ -70,8 +70,8 @@ interface GameSetupPlayerRecord {
 export function setDebug(value: boolean): void { DEBUG = !!value; }
 const debugWarn = (...args: unknown[]): void => { if (DEBUG)
     console.warn(...args); };
-export const COLOR_NAMES = ['Blue', 'Red', 'Yellow', 'Green', 'Teal', 'Purple', 'Orange', 'Pink'] as const;
-export const COLOR_HEX = ['#3b82f6', '#ef4444', '#fbbf24', '#22c55e', '#06b6d4', '#a855f7', '#fb923c', '#ec4899'] as const;
+export const COLOR_NAMES = ['Blue', 'Red', 'Yellow', 'Green', 'Teal', 'Purple', 'Orange', 'Pink', 'Dark Green', 'Magenta'] as const;
+export const COLOR_HEX = ['#3b82f6', '#ef4444', '#fbbf24', '#22c55e', '#06b6d4', '#a855f7', '#fb923c', '#ec4899', '#166534', '#db2777'] as const;
 const MAX_STRING_LENGTH = 256;
 const FILE_HEADER_SIZE = 0x4C;
 const SECOND_CHUNKY_OFFSET = 0x90;
@@ -79,7 +79,7 @@ const CHUNKY_MAGIC = 'Relic Chunky\r\n\x1a\0';
 const COLOR_OFFSET_AFTER_STEAMID = 14;
 const KNOWN_CIVS = new Set([
     'english', 'french', 'hre', 'rus', 'mongol', 'chinese', 'abbasid', 'delhi', 'malian', 'ottoman',
-    'byzantine', 'japanese',
+    'byzantine', 'japanese', 'jin',
     'templar',
 ]);
 function isPlausibleCiv(value: string): boolean {
@@ -285,8 +285,8 @@ export async function extractPlayerColors(arrayBuffer: ArrayBuffer): Promise<Ext
             throw new Error(`parse_slot_color_oob: slot=${slot} colorOffset=${colorOffset} payloadEnd=${payloadEnd} chunkVersion=${chunkVersion}`);
         }
         const color = buf[colorOffset];
-        if (color > 7) {
-            throw new Error(`parse_slot_color_invalid: slot=${slot} color=${color} (expected 0..7) playerId=${pid.value} chunkVersion=${chunkVersion}`);
+        if (color > 9) {
+            throw new Error(`parse_slot_color_invalid: slot=${slot} color=${color} (expected 0..9) playerId=${pid.value} chunkVersion=${chunkVersion}`);
         }
         if (buf[colorOffset - 1] !== 0x01) {
             throw new Error(`parse_slot_sanity_byte_invalid: slot=${slot} prevByte=0x${buf[colorOffset - 1].toString(16)} (expected 0x01) playerId=${pid.value} chunkVersion=${chunkVersion}`);
@@ -482,7 +482,7 @@ function readGameSetupPlayer(buf: Uint8Array, offset: number, payloadEnd: number
     p += 14;
     const colorPos = p;
     const color = buf[p++];
-    if (color > 7) {
+    if (color > 9) {
         throw new Error(`parse_struct_invalid_color: slot=${slotIndex} color=${color} platformId=${platformId} chunkVersion=${chunkVersion}`);
     }
     return {

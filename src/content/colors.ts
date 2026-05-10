@@ -4,15 +4,17 @@ import type { GameSummary, PlayerSummary } from './types.ts';
 export const PLAYER_COLORS = [
   '#4dabf7', '#ff6b6b', '#ffd43b', '#51cf66',
   '#cc5de8', '#20c997', '#ffa94d', '#748ffc',
+  '#2b8a3e', '#e64980',
 ];
 
 export const AOE4_PLAYER_COLOR_HEX = [
   '#3b82f6', '#ef4444', '#fbbf24', '#22c55e',
   '#06b6d4', '#a855f7', '#fb923c', '#ec4899',
+  '#166534', '#db2777',
 ];
 
 export function validColor(c: unknown): c is number {
-  return typeof c === 'number' && Number.isInteger(c) && c >= 0 && c < 8;
+  return typeof c === 'number' && Number.isInteger(c) && c >= 0 && c < 10;
 }
 
 export function civsOverlap(a: string, b: string): boolean {

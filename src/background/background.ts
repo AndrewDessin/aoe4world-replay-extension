@@ -220,24 +220,35 @@ async function ensureCurrentPatch(): Promise<number | null> {
     return currentPatch;
 }
 async function refreshCurrentPatch(): Promise<void> {
-    try {
-        const r = await fetch(PATCH_API, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
-        const data = await r.json() as {
-            patch?: string | number;
-        };
-        const patches = String(data.patch).split(',').map(Number).filter(n => n > 0).sort((a, b) => b - a);
-        if (patches.length > 0) {
-            const oldPatch = currentPatch;
-            currentPatch = patches[0];
-            knownPatches = patches;
-            chrome.storage.local.set({ patchInfo: { current: currentPatch, patches: knownPatches, time: Date.now() } });
-            dbg(`[replay] Patches: ${knownPatches.join(', ')} (current: ${currentPatch})`);
-        }
-    }
-    catch (e) {
-        console.warn('[replay] Failed to fetch patch info:', (e as {
-            message?: string;
-        })?.message || String(e));
+    const patchCandidates: number[] = [...knownPatches];
+    const fetches: Promise<void>[] = [];
+    fetches.push(
+        fetch(PATCH_API, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
+            .then(r => r.json())
+            .then((data: { patch?: string | number }) => {
+                const patches = String(data.patch).split(',').map(Number).filter(n => n > 0);
+                patchCandidates.push(...patches);
+            })
+            .catch(() => {})
+    );
+    fetches.push(
+        fetch('https://aoe4world.com/api/v0/games?limit=1', { headers: { 'Accept': 'application/json' } })
+            .then(r => r.json())
+            .then((data: { games?: Array<{ patch?: number }> }) => {
+                const p = data.games?.[0]?.patch;
+                if (p && p > 0) patchCandidates.push(p);
+            })
+            .catch(() => {})
+    );
+    await Promise.allSettled(fetches);
+    const unique = [...new Set(patchCandidates)].filter(n => n > 0).sort((a, b) => b - a);
+    if (unique.length > 0 && unique[0] !== currentPatch) {
+        currentPatch = unique[0];
+        knownPatches = unique;
+        chrome.storage.local.set({ patchInfo: { current: currentPatch, patches: knownPatches, time: Date.now() } });
+        dbg(`[replay] Patches: ${knownPatches.join(', ')} (current: ${currentPatch})`);
+    } else if (unique.length > 0) {
+        knownPatches = unique;
     }
 }
 function updatePatchFromUrl(url: string): void {
