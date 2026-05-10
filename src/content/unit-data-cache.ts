@@ -15,7 +15,7 @@ const CIV_ID_TO_DATA_SLUG: Record<string, string> = {
   abbasid_dynasty: 'abbasid', ayyubids: 'ayyubids', byzantines: 'byzantines',
   chinese: 'chinese', delhi_sultanate: 'delhi', english: 'english', french: 'french',
   golden_horde: 'goldenhorde', holy_roman_empire: 'hre', house_of_lancaster: 'lancaster',
-  japanese: 'japanese', jeanne_darc: 'jeannedarc', jin_dynasty: 'jin', knights_templar: 'templar',
+  japanese: 'japanese', jeanne_darc: 'jeannedarc', jin_dynasty: 'jindynasty', knights_templar: 'templar',
   macedonian_dynasty: 'macedonian', malians: 'malians', mongols: 'mongols',
   order_of_the_dragon: 'orderofthedragon', ottomans: 'ottomans', rus: 'rus',
   sengoku_daimyo: 'sengoku', tughlaq_dynasty: 'tughlaq', zhu_xis_legacy: 'zhuxi',

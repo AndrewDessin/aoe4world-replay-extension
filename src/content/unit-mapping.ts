@@ -39,7 +39,11 @@ export function unitMergeKey(icon: string | null | undefined, pbgid: number | nu
   const fromPbgid = resolveUnitByPbgid(pbgid);
   if (fromPbgid?.k) return fromPbgid.k;
   const filename = (String(icon || '').split('/').pop() || '').toLowerCase();
-  return filename.replace(/_(?:age_?\d+|\d+|cw|upgrade(?:_\d+)?)$/, '') || filename;
+  // Strip age + civ + variant suffixes: horseman_2_jin_grassland → horseman
+  const stripped = filename
+    .replace(/_\d+_[a-z]{2,5}(?:_[a-z0-9_]+)?$/, '')  // _2_chi, _3_jin_grassland, _2_ha_01
+    .replace(/_(?:age_?\d+|\d+|cw|upgrade(?:_\d+)?)$/, '');
+  return stripped || filename;
 }
 
 export function findUnitGroupForUpgrade(
