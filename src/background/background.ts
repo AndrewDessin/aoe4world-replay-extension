@@ -181,7 +181,7 @@ async function parseReplayApiJson(response: Response, what = 'replay API'): Prom
 }
 const NATIVE_HOST = 'com.aoe4.replay_launcher';
 const MAX_FAVORITES = 10;
-const COLORS_CACHE_KEY_PREFIX = 'colors_v3_';
+const COLORS_CACHE_KEY_PREFIX = 'colors_v4_';
 const COLORS_CACHE_LIMIT = 50;
 const COLORS_NEGATIVE_TTL_MS = 60 * 60 * 1000;
 const COLORS_SOFT_FAILURE_TTL_MS = 10 * 60 * 1000;
