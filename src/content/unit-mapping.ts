@@ -170,7 +170,7 @@ export function unitLabelBase(
       }
     }
   }
-  return unitLabel(originalIcon, player, pbgid);
+  return unitLabel(mergeKey, player, null) || unitLabel(originalIcon, player, pbgid);
 }
 
 export function unitIconCandidates(

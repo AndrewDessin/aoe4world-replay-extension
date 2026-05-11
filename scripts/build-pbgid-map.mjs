@@ -255,9 +255,10 @@ function slimFamilies(json, opts = {}) {
         const existing = out[v.pbgid];
         if (existing && existing !== entry) {
           if (existing.k !== entry.k || existing.b !== entry.b || existing.n !== entry.n) {
-            throw new Error(
-              `Cross-family pbgid collision: ${v.pbgid} maps to {k:"${existing.k}",b:"${existing.b}",n:"${existing.n}"} and {k:"${entry.k}",b:"${entry.b}",n:"${entry.n}"}`
+            console.warn(
+              `⚠ Cross-family pbgid collision: ${v.pbgid} maps to {k:"${existing.k}",n:"${existing.n}"} and {k:"${entry.k}",n:"${entry.n}"} — keeping first`
             );
+            continue;
           }
         }
         out[v.pbgid] = entry;
