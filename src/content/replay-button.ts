@@ -1,5 +1,5 @@
 import { findAnchor } from './dom.ts';
-import { checkReplay, getOldPatchCutoffDate, getGameTimestamp, getGameDateText } from './replay-availability.ts';
+import { checkReplay, getGameDateText } from './replay-availability.ts';
 import type { ReplayAvailabilityResult } from './types.ts';
 
 interface LaunchReplayResponse {
@@ -21,9 +21,10 @@ function createReplayDiv(gameId: string, prevPatch = false): HTMLDivElement {
   div.className = 'aoe4-replay-btn text-gray-200 mt-0';
   div.dataset.gameId = gameId;
 
-  const link = document.createElement('a');
+  const link = document.createElement('span');
   link.className = 'hover:underline hover:text-white';
-  link.href = '#';
+  link.style.cursor = 'pointer';
+  link.setAttribute('role', 'button');
 
   if (prevPatch) {
     link.title = 'Download and launch this replay in AoE4';
@@ -38,7 +39,7 @@ function createReplayDiv(gameId: string, prevPatch = false): HTMLDivElement {
   return div;
 }
 
-function handleWatchClick(gameId: string, link: HTMLAnchorElement): (e: MouseEvent) => void {
+function handleWatchClick(gameId: string, link: HTMLElement): (e: MouseEvent) => void {
   return (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -116,25 +117,27 @@ function removeLoading(el: LoadingDiv): void {
   el.remove();
 }
 
+function createUnavailableDiv(): HTMLDivElement {
+  const div = document.createElement('div');
+  div.className = 'aoe4-replay-unavailable';
+  div.style.cssText = 'color:#6b7280;font-size:0.8rem;cursor:default;';
+  div.textContent = 'Replay Unavailable';
+  div.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+  return div;
+}
+
 function processRow(row: Element): void {
   const gameRow = row as HTMLElement;
   const gameId = getGameIdFromRow(gameRow);
   if (!gameId) return;
-  if (gameRow.querySelector('.aoe4-replay-btn, .aoe4-replay-loading')) return;
+  if (gameRow.querySelector('.aoe4-replay-btn, .aoe4-replay-loading, .aoe4-replay-unavailable')) return;
 
   const anchor = findAnchor(gameRow) as HTMLElement | null;
   if (!anchor) return;
 
-  const cutoff = getOldPatchCutoffDate();
-  if (cutoff) {
-    const gameDate = getGameTimestamp(gameRow);
-    if (gameDate && gameDate <= cutoff) {
-      return;
-    }
-  }
-
   const dateText = getGameDateText(gameRow);
   if (dateText.match(/year/)) {
+    anchor.appendChild(createUnavailableDiv());
     return;
   }
 
@@ -147,8 +150,10 @@ function processRow(row: Element): void {
     const replay = result as ReplayAvailabilityResult;
     clearTimeout(timeout);
     removeLoading(loading);
-    if (replay.available) {
+    if (replay?.available) {
       anchor.appendChild(createReplayDiv(gameId, replay.prevPatch));
+    } else {
+      anchor.appendChild(createUnavailableDiv());
     }
   });
 }

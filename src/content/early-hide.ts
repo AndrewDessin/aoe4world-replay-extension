@@ -1,6 +1,7 @@
 (() => {
   type EarlyHideSettings = {
     settings?: {
+      parseGameData?: boolean;
       recolorSwatches?: boolean;
     };
   };
@@ -59,7 +60,7 @@
 
   try {
     chrome.storage.local.get('settings', ({ settings }: EarlyHideSettings): void => {
-      const enabled = !settings || settings.recolorSwatches !== false;
+      const enabled = settings?.parseGameData === true && settings?.recolorSwatches === true;
       writeHint(enabled);
       if (!enabled && !skipped) removeStyle();
     });

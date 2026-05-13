@@ -6,10 +6,10 @@ import {
   PLAYER_COLORS, AOE4_PLAYER_COLOR_HEX,
 } from '../../src/content/colors.ts';
 
-test('validColor accepts 0..9, rejects rest', () => {
-  for (let i = 0; i < 10; i++) assert.equal(validColor(i), true, `${i} should be valid`);
+test('validColor accepts 0..15, rejects rest', () => {
+  for (let i = 0; i < 16; i++) assert.equal(validColor(i), true, `${i} should be valid`);
   assert.equal(validColor(-1), false);
-  assert.equal(validColor(10), false);
+  assert.equal(validColor(16), false);
   assert.equal(validColor(1.5), false);
   assert.equal(validColor('3'), false);
   assert.equal(validColor(null), false);

@@ -28,8 +28,8 @@ describe('settings – defaults (empty storage)', () => {
     assert.equal(mod.recolorEnabled(), false);
   });
 
-  it('chartsEnabled defaults to true', () => {
-    assert.equal(mod.chartsEnabled(), true);
+  it('chartsEnabled defaults to false', () => {
+    assert.equal(mod.chartsEnabled(), false);
   });
 
   it('SETTINGS_DEFAULTS is frozen', () => {
@@ -48,7 +48,7 @@ describe('settings – defaults (empty storage)', () => {
 describe('settings – pre-populated storage', () => {
   it('applies stored settings on init', async () => {
     const { mod } = await loadSettings({
-      initial: { settings: { recolorSwatches: true, injectCharts: false, debugLogs: true } },
+      initial: { settings: { parseGameData: true, recolorSwatches: true, injectCharts: false, debugLogs: true } },
     });
     assert.equal(mod.recolorEnabled(), true);
     assert.equal(mod.chartsEnabled(), false);
@@ -62,15 +62,15 @@ describe('applySettings', () => {
   });
 
   it('merges with defaults', () => {
-    mod.applySettings({ recolorSwatches: true });
+    mod.applySettings({ parseGameData: true, recolorSwatches: true });
     assert.equal(mod.recolorEnabled(), true);
-    assert.equal(mod.chartsEnabled(), true); // default preserved
+    assert.equal(mod.chartsEnabled(), false); // default preserved
   });
 
   it('handles null/undefined stored value', () => {
     mod.applySettings(null);
     assert.equal(mod.recolorEnabled(), false);
-    assert.equal(mod.chartsEnabled(), true);
+    assert.equal(mod.chartsEnabled(), false);
   });
 
   it('notifies subscribers with prev and next', () => {
@@ -120,7 +120,7 @@ describe('storage.onChanged integration', () => {
     const calls = [];
     mod.onSettingsChange((prev, next) => calls.push({ prev, next }));
 
-    await mock.chrome.storage.local.set({ settings: { recolorSwatches: true } });
+    await mock.chrome.storage.local.set({ settings: { parseGameData: true, recolorSwatches: true } });
     assert.equal(calls.length, 1);
     assert.equal(mod.recolorEnabled(), true);
   });
@@ -197,7 +197,7 @@ describe('writeRecolorHint via localStorage', () => {
       removeItem() {},
     };
     const { mod } = await loadSettings({
-      initial: { settings: { recolorSwatches: true } },
+      initial: { settings: { parseGameData: true, recolorSwatches: true } },
     });
     assert.equal(stored['__aoe4-color-ext-recolor-v1'], '1');
   });
@@ -229,13 +229,13 @@ describe('settings – recolor regression: explicit undefined defaults to disabl
   });
 
   it('recolorEnabled returns false for any non-true value', async () => {
-    const { mod } = await loadSettings({ initial: { settings: { recolorSwatches: 0 } } });
+    const { mod } = await loadSettings({ initial: { settings: { parseGameData: true, recolorSwatches: 0 } } });
     assert.equal(mod.recolorEnabled(), false);
-    mod.applySettings({ recolorSwatches: 1 });
+    mod.applySettings({ parseGameData: true, recolorSwatches: 1 });
     assert.equal(mod.recolorEnabled(), false);
-    mod.applySettings({ recolorSwatches: 'yes' });
+    mod.applySettings({ parseGameData: true, recolorSwatches: 'yes' });
     assert.equal(mod.recolorEnabled(), false);
-    mod.applySettings({ recolorSwatches: true });
+    mod.applySettings({ parseGameData: true, recolorSwatches: true });
     assert.equal(mod.recolorEnabled(), true);
   });
 });

@@ -1,0 +1,34 @@
+name: Bug Report
+description: Report a problem with the extension
+labels: ["bug"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Page URL
+      description: The aoe4world.com URL where the issue occurs
+      placeholder: https://aoe4world.com/players/.../games/...
+    validations:
+      required: false
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      placeholder: Describe what you expected vs what actually happened
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drag and drop a screenshot if helpful
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      description: Found in chrome://extensions
+      placeholder: "0.15"
+    validations:
+      required: false

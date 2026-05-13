@@ -1,9 +1,9 @@
 // Fixture-based regression test for the AoE4 replay parsers.
 //
 // Usage:
-//   node scripts/check-fixtures.mjs              # checks all fixtures
-//   node scripts/check-fixtures.mjs --update     # regenerates .expected.json
-//   node scripts/check-fixtures.mjs --download <gameId> [<sig>] [<name>]
+//   node tests/check-fixtures.mjs              # checks all fixtures
+//   node tests/check-fixtures.mjs --update     # regenerates .expected.json
+//   node tests/check-fixtures.mjs --download <gameId> [<sig>] [<name>]
 //                                                # downloads a fresh fixture
 //
 // Each fixture is a .gz replay file in chrome-extension/test-fixtures/ with
@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
-const FIXTURES_DIR = path.join(REPO_ROOT, 'chrome-extension', 'test-fixtures');
+const FIXTURES_DIR = path.join(REPO_ROOT, 'tests', 'fixtures', 'replay');
 const REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles';
 const UA = 'AoE4ReplayLauncher-ChromeExt-tests/0.1 (https://github.com/spartain-aoe/aoe4world-replay-extension)';
 
@@ -28,7 +28,7 @@ const UA = 'AoE4ReplayLauncher-ChromeExt-tests/0.1 (https://github.com/spartain-
 // Node 18+ ships DecompressionStream as a global already; nothing to do.
 
 const parserModuleUrl = pathToFileURL(
-  path.join(REPO_ROOT, 'chrome-extension', 'replay-parser.js')
+  path.join(REPO_ROOT, 'src', 'background', 'replay-parser.ts')
 ).href;
 const parser = await import(parserModuleUrl);
 
@@ -52,7 +52,7 @@ async function main() {
 
   if (fixtures.length === 0) {
     console.log('No fixtures found in', FIXTURES_DIR);
-    console.log('Add some with: node scripts/check-fixtures.mjs --download <gameId>');
+    console.log('Add some with: node tests/check-fixtures.mjs --download <gameId>');
     return;
   }
 
@@ -183,7 +183,7 @@ async function downloadFixture(gameId, fixtureName) {
   const dest = path.join(FIXTURES_DIR, `${fixtureName}.gz`);
   await fs.writeFile(dest, buf);
   console.log(`Saved ${dest} (${buf.length} bytes)`);
-  console.log(`Now run: node scripts/check-fixtures.mjs --update`);
+  console.log(`Now run: node tests/check-fixtures.mjs --update`);
 }
 
 await main();

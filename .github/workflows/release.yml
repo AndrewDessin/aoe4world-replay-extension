@@ -9,7 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  extension:
+    name: Chrome Extension
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,17 +34,12 @@ jobs:
         run: npm test
 
       - name: Pack Chrome extension zip
-        run: cd chrome-extension && zip -r ../chrome-extension-store.zip . -x "test-fixtures/*" -x "docs/*"
+        run: cd chrome-extension && zip -r ../chrome-extension-store.zip .
 
-      - name: Pack native host installer zip
-        run: cd native-host && zip -r ../aoe4-replay-launcher.zip .
-
-      - name: Create GitHub Release
+      - name: Create GitHub Release — Extension
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            chrome-extension-store.zip
-            aoe4-replay-launcher.zip
+          files: chrome-extension-store.zip
           generate_release_notes: true
 
       - name: Publish to Chrome Web Store
@@ -55,3 +51,17 @@ jobs:
           client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
           refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
           publish: true
+
+  launcher:
+    name: Native Replay Launcher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pack native host installer zip
+        run: cd native-host && zip -r ../aoe4-replay-launcher.zip .
+
+      - name: Create GitHub Release — Launcher
+        uses: softprops/action-gh-release@v2
+        with:
+          files: aoe4-replay-launcher.zip

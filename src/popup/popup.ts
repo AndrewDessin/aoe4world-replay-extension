@@ -3,6 +3,7 @@ function esc(s: string): string {
 }
 
 type PopupSettings = {
+  parseGameData: boolean;
   recolorSwatches: boolean;
   injectCharts: boolean;
   debugLogs: boolean;
@@ -42,9 +43,10 @@ const list = document.getElementById('list') as HTMLElement;
 const countEl = document.getElementById('count') as HTMLElement;
 let currentFavorites: FavoritesById = {};
 
-const SETTINGS_DEFAULTS = Object.freeze<PopupSettings>({ recolorSwatches: false, injectCharts: true, debugLogs: false });
+const SETTINGS_DEFAULTS = Object.freeze<PopupSettings>({ parseGameData: false, recolorSwatches: false, injectCharts: false, debugLogs: false });
 const settingsPanel = document.getElementById('settings') as HTMLElement;
 const settingsToggle = document.getElementById('settings-toggle') as HTMLElement;
+const optParse = document.getElementById('opt-parse') as HTMLInputElement;
 const optCharts = document.getElementById('opt-charts') as HTMLInputElement;
 const optRecolor = document.getElementById('opt-recolor') as HTMLInputElement;
 const optDebug = document.getElementById('opt-debug') as HTMLInputElement;
@@ -58,12 +60,19 @@ settingsToggle.addEventListener('click', () => {
   settingsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
 });
 
+function syncSubToggles(parseOn: boolean): void {
+  optCharts.disabled = !parseOn;
+  optRecolor.disabled = !parseOn;
+}
+
 function loadSettingsIntoPanel(): void {
   chrome.storage.local.get('settings', ({ settings }: SettingsStorage): void => {
     const merged: PopupSettings = { ...SETTINGS_DEFAULTS, ...(settings || {}) };
-    optCharts.checked = merged.injectCharts !== false;
+    optParse.checked = merged.parseGameData === true;
+    optCharts.checked = merged.injectCharts === true;
     optRecolor.checked = merged.recolorSwatches === true;
     optDebug.checked = merged.debugLogs === true;
+    syncSubToggles(optParse.checked);
   });
 }
 
@@ -74,6 +83,10 @@ async function updateOneSetting(key: keyof PopupSettings, value: boolean): Promi
   reloadHint.classList.add('show');
 }
 
+optParse.addEventListener('change', () => {
+  updateOneSetting('parseGameData', optParse.checked);
+  syncSubToggles(optParse.checked);
+});
 optCharts.addEventListener('change', () => updateOneSetting('injectCharts', optCharts.checked));
 optRecolor.addEventListener('change', () => updateOneSetting('recolorSwatches', optRecolor.checked));
 optDebug.addEventListener('change', () => updateOneSetting('debugLogs', optDebug.checked));

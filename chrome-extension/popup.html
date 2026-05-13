@@ -91,6 +91,18 @@
       height: 14px;
       accent-color: #2ea043;
     }
+    .setting.sub {
+      padding-left: 24px;
+    }
+    .setting.sub .name { font-weight: 500; }
+    .setting input[type="checkbox"]:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .setting input[type="checkbox"]:disabled + label {
+      opacity: 0.4;
+      cursor: default;
+    }
     .setting label {
       flex: 1;
       cursor: pointer;
@@ -105,6 +117,19 @@
       display: none;
     }
     .reload-hint.show { display: block; }
+    .footer {
+      display: flex;
+      justify-content: center;
+      padding: 10px 0 2px;
+      border-top: 1px solid #333;
+      margin-top: 8px;
+    }
+    .footer a {
+      color: #6c757d;
+      font-size: 11px;
+      text-decoration: none;
+    }
+    .footer a:hover { color: #adb5bd; text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -114,29 +139,39 @@
   </div>
   <div id="settings" aria-hidden="true">
     <div class="setting">
+      <input type="checkbox" id="opt-parse" />
+      <label for="opt-parse">
+        <div class="name">Parse additional game data</div>
+        <div class="desc">Download and parse replay data from game pages. Required for custom charts and in-game player colors.</div>
+      </label>
+    </div>
+    <div class="setting sub">
       <input type="checkbox" id="opt-charts" />
       <label for="opt-charts">
         <div class="name">Inject custom charts</div>
-        <div class="desc">Add resource-gathered, army-composition, and build-order charts to game pages. When off, no aoe4world summary or unit-data fetches are made.</div>
+        <div class="desc">Add resource-gathered, army-composition, and build-order charts to game pages.</div>
       </label>
     </div>
-    <div class="setting">
+    <div class="setting sub">
       <input type="checkbox" id="opt-recolor" />
       <label for="opt-recolor">
         <div class="name">Use in-game player colors</div>
-        <div class="desc">Recolor aoe4world's default red/blue/etc. swatches with the actual colors from each replay file. When off, the extension won't download replay files for color extraction. Requires "Inject custom charts" to be on.</div>
+        <div class="desc">Recolor aoe4world's default red/blue/etc. swatches with the actual colors from each replay file.</div>
       </label>
     </div>
     <div class="setting">
       <input type="checkbox" id="opt-debug" />
       <label for="opt-debug">
         <div class="name">Show debug logs</div>
-        <div class="desc">Print verbose diagnostic logs to the page DevTools console. Off by default. Real errors are always shown.</div>
+        <div class="desc">Print verbose diagnostic logs to the page DevTools console.</div>
       </label>
     </div>
     <div class="reload-hint" id="reload-hint">Reload any open aoe4world tabs to fully apply this change.</div>
   </div>
   <div id="list"></div>
+  <div class="footer">
+    <a href="https://github.com/spartain-aoe/aoe4world-replay-extension/issues/new?template=bug_report.yml" target="_blank">Report a bug</a>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

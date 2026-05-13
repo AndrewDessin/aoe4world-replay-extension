@@ -1,12 +1,14 @@
 import { extractPlayerColors, extractPlayerColorsStructural, setDebug as setParserDebug, type ExtractPlayerColorsResult, type PlayerColorInfo } from './replay-parser.ts';
 interface Settings {
+    parseGameData: boolean;
     recolorSwatches: boolean;
     injectCharts: boolean;
     debugLogs: boolean;
 }
 interface PatchInfo {
-    current: number;
-    patches: number[];
+    current: string | null;
+    previous: string | null;
+    patches: string[];
     time: number;
 }
 interface ReplayFile {
@@ -19,6 +21,7 @@ interface ReplayApiResponse {
     result?: {
         code?: number;
     };
+    expiryUnix?: number;
     replayFiles?: ReplayFile[];
     patch?: string | number;
 }
@@ -26,7 +29,7 @@ interface FavoriteEntry {
     matchId?: string | number;
     meta?: Record<string, unknown>;
     replayData?: string;
-    patch?: number | null;
+    patch?: string | null;
     savedAt?: number;
 }
 interface UnitDataItem {
@@ -105,9 +108,10 @@ type StorageItems = Record<string, unknown>;
 interface CheckReplaysResponse {
     available: Record<string, boolean>;
     rateLimited?: boolean;
-    gamePatches?: Record<string, number>;
-    currentPatch?: number | null;
-    knownPatches?: number[];
+    gamePatches?: Record<string, string>;
+    currentPatch?: string | null;
+    previousPatch?: string | null;
+    knownPatches?: string[];
 }
 type GetPlayerColorsResponse = {
     success: true;
@@ -134,7 +138,7 @@ interface PlayerStringDiff {
     heuristic: string | null;
     structural: string | null;
 }
-const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({ recolorSwatches: false, injectCharts: true, debugLogs: false });
+const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({ parseGameData: false, recolorSwatches: false, injectCharts: false, debugLogs: false });
 let SETTINGS: Settings = { ...SETTINGS_DEFAULTS };
 let __settingsReadyResolve: (() => void) | undefined;
 const settingsReady: Promise<void> = new Promise<void>(r => { __settingsReadyResolve = r; });
@@ -158,8 +162,7 @@ const dbg = (...args: unknown[]): void => { if (SETTINGS.debugLogs)
 const dbgWarn = (...args: unknown[]): void => { if (SETTINGS.debugLogs)
     console.warn(...args); };
 const REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles';
-const PATCH_API = 'https://aoe4world.com/api/v0/stats/rm_solo/civilizations';
-const UA = 'AoE4ReplayLauncher-ChromeExt/0.4 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
+const UA = 'AoE4ReplayLauncher-ChromeExt/1.0 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
 async function parseReplayApiJson(response: Response, what = 'replay API'): Promise<ReplayApiResponse> {
     if (response.status === 429) {
         recordBackoff(what);
@@ -186,6 +189,9 @@ const COLORS_CACHE_LIMIT = 50;
 const COLORS_NEGATIVE_TTL_MS = 60 * 60 * 1000;
 const COLORS_SOFT_FAILURE_TTL_MS = 10 * 60 * 1000;
 const inFlightColorRequests = new Map<string, Promise<GetPlayerColorsResponse>>();
+interface CachedReplayUrl { url: string; expiry: number; }
+const replayUrlCache = new Map<string, CachedReplayUrl>();
+const REPLAY_URL_CACHE_LIMIT = 50;
 const BACKOFF_BASE_MS = 5000;
 const BACKOFF_MAX_MS = 60000;
 let backoffUntil = 0;
@@ -203,66 +209,89 @@ function recordBackoffSuccess(): void {
         backoffStreak = 0;
     }
 }
-let currentPatch: number | null = null;
-let knownPatches: number[] = [];
-async function ensureCurrentPatch(): Promise<number | null> {
-    if (currentPatch)
+function comparePatchVersions(a: string, b: string): number {
+    const partsA = a.split(/[./]/).map(Number);
+    const partsB = b.split(/[./]/).map(Number);
+    const len = Math.max(partsA.length, partsB.length);
+    for (let i = 0; i < len; i++) {
+        const va = partsA[i] ?? 0;
+        const vb = partsB[i] ?? 0;
+        if (va !== vb) return va - vb;
+    }
+    return 0;
+}
+
+let currentPatch: string | null = null;
+let previousPatch: string | null = null;
+let knownPatches: string[] = [];
+let lastRefreshTime = 0;
+const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+async function ensureCurrentPatch(): Promise<string | null> {
+    if (currentPatch && Date.now() - lastRefreshTime < REFRESH_INTERVAL_MS)
         return currentPatch;
-    const cached = await chrome.storage.local.get('patchInfo') as {
-        patchInfo?: PatchInfo;
-    };
-    if (cached.patchInfo && Date.now() - cached.patchInfo.time < 24 * 60 * 60 * 1000) {
-        currentPatch = cached.patchInfo.current;
-        knownPatches = cached.patchInfo.patches || [];
-        return currentPatch;
+    if (!currentPatch) {
+        const cached = await chrome.storage.local.get('patchInfo_v2') as {
+            patchInfo_v2?: PatchInfo;
+        };
+        if (cached.patchInfo_v2) {
+            const isFullVersion = (v: string) => v.includes('/');
+            currentPatch = cached.patchInfo_v2.current ?? null;
+            if (currentPatch && !isFullVersion(currentPatch)) currentPatch = null;
+            previousPatch = cached.patchInfo_v2.previous ?? null;
+            if (previousPatch && !isFullVersion(previousPatch)) previousPatch = null;
+            knownPatches = (cached.patchInfo_v2.patches || []).filter(isFullVersion);
+        }
     }
     await refreshCurrentPatch();
     return currentPatch;
 }
 async function refreshCurrentPatch(): Promise<void> {
-    const patchCandidates: number[] = [...knownPatches];
-    const fetches: Promise<void>[] = [];
-    fetches.push(
-        fetch(PATCH_API, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
-            .then(r => r.json())
-            .then((data: { patch?: string | number }) => {
-                const patches = String(data.patch).split(',').map(Number).filter(n => n > 0);
-                patchCandidates.push(...patches);
-            })
-            .catch(() => {})
-    );
-    fetches.push(
-        fetch('https://aoe4world.com/api/v0/games?limit=1', { headers: { 'Accept': 'application/json' } })
-            .then(r => r.json())
-            .then((data: { games?: Array<{ patch?: number }> }) => {
-                const p = data.games?.[0]?.patch;
-                if (p && p > 0) patchCandidates.push(p);
-            })
-            .catch(() => {})
-    );
-    await Promise.allSettled(fetches);
-    const unique = [...new Set(patchCandidates)].filter(n => n > 0).sort((a, b) => b - a);
-    if (unique.length > 0 && unique[0] !== currentPatch) {
-        currentPatch = unique[0];
-        knownPatches = unique;
-        chrome.storage.local.set({ patchInfo: { current: currentPatch, patches: knownPatches, time: Date.now() } });
-        dbg(`[replay] Patches: ${knownPatches.join(', ')} (current: ${currentPatch})`);
-    } else if (unique.length > 0) {
-        knownPatches = unique;
-    }
+    try {
+        const data = await fetch('https://aoe4world.com/api/v0/games?limit=5&state=finished', { headers: { 'Accept': 'application/json' } })
+            .then(r => r.json()) as { games?: Array<{ game_id?: number; patch?: number | string }> };
+        const games = data.games || [];
+        const gameIds = games.filter(g => g.game_id).map(g => g.game_id!).slice(0, 5);
+        if (!gameIds.length) return;
+        const replayData = await fetch(`${REPLAY_API}?matchIDs=[${gameIds.join(',')}]&title=age4`, { headers: { 'User-Agent': UA } })
+            .then(r => r.json()) as ReplayApiResponse;
+        const file = replayData.replayFiles?.find((f: ReplayFile) => f.url);
+        if (file?.url) {
+            updatePatchFromUrl(file.url);
+            const m = file.url.match(/\/([\d.]+\/\d+)\/M_/);
+            if (m) currentPatch = m[1];
+        }
+        if (!currentPatch && games[0]?.patch) currentPatch = String(games[0].patch);
+    } catch { }
+    lastRefreshTime = Date.now();
+    dbg(`[replay] Patches: ${knownPatches.join(', ')} (current: ${currentPatch}, previous: ${previousPatch})`);
+}
+function recomputePreviousPatch(): void {
+    if (!currentPatch || knownPatches.length < 2) { previousPatch = null; return; }
+    const sorted = [...knownPatches].sort((a, b) => comparePatchVersions(b, a));
+    const curIdx = sorted.indexOf(currentPatch);
+    previousPatch = sorted[curIdx + 1] ?? null;
+}
+function savePatchInfo(): void {
+    chrome.storage.local.set({ patchInfo_v2: { current: currentPatch, previous: previousPatch, patches: knownPatches, time: Date.now() } });
 }
 function updatePatchFromUrl(url: string): void {
-    const m = url.match(/\/(\d{4,})\/M_/);
+    const m = url.match(/\/([\d.]+\/\d+)\/M_/);
     if (m) {
-        const patch = Number(m[1]);
-        if (patch > (currentPatch || 0)) {
-            currentPatch = patch;
-            if (!knownPatches.includes(patch))
-                knownPatches.unshift(patch);
-            knownPatches.sort((a, b) => b - a);
-            chrome.storage.local.set({ patchInfo: { current: currentPatch, patches: knownPatches, time: Date.now() } });
-            dbg(`[replay] Patch updated from replay URL: ${currentPatch}`);
+        const fullVersion = m[1];
+        const build = fullVersion.split('/').pop()!;
+        if (!knownPatches.includes(fullVersion)) {
+            knownPatches.push(fullVersion);
+            recomputePreviousPatch();
         }
+        if (currentPatch === build) {
+            currentPatch = fullVersion;
+            recomputePreviousPatch();
+        } else if (currentPatch && comparePatchVersions(fullVersion, currentPatch) > 0) {
+            previousPatch = currentPatch;
+            currentPatch = fullVersion;
+            recomputePreviousPatch();
+        }
+        savePatchInfo();
     }
 }
 settingsReady.then(() => {
@@ -292,33 +321,40 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
             return true;
         }
         const ids = msg.gameIds.slice(0, 10);
-        const url = `${REPLAY_API}?matchIDs=[${ids.join(',')}]&title=age4`;
-        dbg(`[replay] Fetching ${ids.length} IDs: ${ids.join(',')}`);
-        fetch(url, { headers: { 'User-Agent': UA } })
-            .then(r => parseReplayApiJson(r, 'replay metadata'))
-            .then(data => {
-            const available: Record<string, boolean> = {};
-            const gamePatches: Record<string, number> = {};
-            if (data.result?.code === 0 && data.replayFiles) {
-                for (const file of data.replayFiles) {
-                    if (file.datatype === 0 && file.size > 0) {
-                        available[String(file.matchhistory_id)] = true;
+        ensureCurrentPatch().then(() => {
+            const url = `${REPLAY_API}?matchIDs=[${ids.join(',')}]&title=age4`;
+            dbg(`[replay] Fetching ${ids.length} IDs: ${ids.join(',')}`);
+            return fetch(url, { headers: { 'User-Agent': UA } })
+                .then(r => parseReplayApiJson(r, 'replay metadata'))
+                .then(data => {
+                    const available: Record<string, boolean> = {};
+                    const gamePatches: Record<string, string> = {};
+                    const expiry = (data.expiryUnix ? data.expiryUnix * 1000 : Date.now() + 3 * 60 * 1000) - 60_000;
+                    if (data.result?.code === 0 && data.replayFiles) {
+                        for (const file of data.replayFiles) {
+                            const mid = String(file.matchhistory_id);
+                            if (file.datatype === 0 && file.size > 0) {
+                                available[mid] = true;
+                            }
+                            if (file.url) {
+                                updatePatchFromUrl(file.url);
+                                const pm = file.url.match(/\/([\d.]+\/\d+)\/M_/);
+                                if (pm) gamePatches[mid] = pm[1];
+                                if (file.datatype === 0 && file.size > 0) {
+                                    replayUrlCache.set(mid, { url: file.url, expiry });
+                                    if (replayUrlCache.size > REPLAY_URL_CACHE_LIMIT) {
+                                        const oldest = replayUrlCache.keys().next().value;
+                                        if (oldest) replayUrlCache.delete(oldest);
+                                    }
+                                }
+                            }
+                        }
                     }
-                    if (file.url) {
-                        updatePatchFromUrl(file.url);
-                        const pm = file.url.match(/\/(\d{4,})\/M_/);
-                        if (pm)
-                            gamePatches[String(file.matchhistory_id)] = Number(pm[1]);
-                    }
-                }
-            }
-            dbg(`[replay] Got ${Object.keys(available).length} available out of ${ids.length}`);
-            sendResponse({ available, gamePatches, currentPatch, knownPatches });
-        })
-            .catch((e: unknown) => {
-            const message = (e as {
-                message?: string;
-            })?.message || String(e);
+                    dbg(`[replay] Got ${Object.keys(available).length} available out of ${ids.length}`);
+                    sendResponse({ available, gamePatches, currentPatch, previousPatch, knownPatches });
+                });
+        }).catch((e: unknown) => {
+            const message = (e as { message?: string })?.message || String(e);
             console.warn('[replay] Error:', message);
             sendResponse({ available: {}, rateLimited: message.includes('Rate limited') } satisfies CheckReplaysResponse);
         });
@@ -384,8 +420,8 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
                 if (!file)
                     throw new Error('No replay file');
                 const replayUrl = file.url as string;
-                const pm = replayUrl.match(/\/(\d{4,})\/M_/);
-                const patch = pm ? Number(pm[1]) : null;
+                const pm = replayUrl.match(/\/([\d.]+\/\d+)\/M_/);
+                const patch = pm ? pm[1] : null;
                 return fetch(replayUrl).then(async (r) => {
                     if (!r.ok)
                         throw new Error(`HTTP ${r.status} downloading replay`);
@@ -394,7 +430,7 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
             })
                 .then(async ({ arrayBuffer, patch }: {
                 arrayBuffer: Promise<ArrayBuffer>;
-                patch: number | null;
+                patch: string | null;
             }) => {
                 const buf = await arrayBuffer;
                 const b64 = arrayBufferToBase64(buf);
@@ -453,7 +489,7 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
     }
     if (msg.type === 'getCurrentPatch') {
         ensureCurrentPatch().then(() => {
-            sendResponse({ patch: currentPatch || null, patches: knownPatches });
+            sendResponse({ patch: currentPatch || null, previousPatch: previousPatch || null, patches: knownPatches });
         });
         return true;
     }
@@ -464,7 +500,7 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
             return false;
         }
         settingsReady.then(() => {
-            if (!SETTINGS.recolorSwatches) {
+            if (!SETTINGS.parseGameData || !SETTINGS.recolorSwatches) {
                 sendResponse({ success: false, error: 'disabled', disabled: true });
                 return;
             }
@@ -478,7 +514,7 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
     }
     if (msg.type === 'getUnitData') {
         settingsReady.then(() => {
-            if (!SETTINGS.injectCharts) {
+            if (!SETTINGS.parseGameData || !SETTINGS.injectCharts) {
                 sendResponse({ success: false, error: 'disabled', disabled: true });
                 return;
             }
@@ -639,32 +675,32 @@ function isSoftFailure(message: string | null | undefined): boolean {
     return false;
 }
 async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorInfo[]> {
-    const apiUrl = `${REPLAY_API}?matchIDs=[${matchId}]&title=age4`;
-    const apiResponse = await fetch(apiUrl, { headers: { 'User-Agent': UA } });
-    let data: ReplayApiResponse;
-    try {
-        data = await parseReplayApiJson(apiResponse, 'replay metadata');
+    const cached = replayUrlCache.get(matchId);
+    let replayUrl = (cached && Date.now() < cached.expiry) ? cached.url : null;
+    replayUrlCache.delete(matchId);
+    if (!replayUrl) {
+        const apiUrl = `${REPLAY_API}?matchIDs=[${matchId}]&title=age4`;
+        const apiResponse = await fetch(apiUrl, { headers: { 'User-Agent': UA } });
+        let data: ReplayApiResponse;
+        try {
+            data = await parseReplayApiJson(apiResponse, 'replay metadata');
+        }
+        catch (e) {
+            const message = (e as { message?: string })?.message || String(e);
+            if (message === 'Rate limited') throw new Error('rate_limited');
+            const m = message.match(/HTTP (\d+)/);
+            if (m) throw new Error(`replay_api_${m[1]}`);
+            throw new Error('replay_api_no_data');
+        }
+        if (data.result?.code !== 0 || !Array.isArray(data.replayFiles)) {
+            throw new Error('replay_api_no_data');
+        }
+        const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
+        if (!replayFile) throw new Error('no_replay_file');
+        replayUrl = replayFile.url as string;
     }
-    catch (e) {
-        const message = (e as {
-            message?: string;
-        })?.message || String(e);
-        if (message === 'Rate limited')
-            throw new Error('rate_limited');
-        const m = message.match(/HTTP (\d+)/);
-        if (m)
-            throw new Error(`replay_api_${m[1]}`);
-        throw new Error('replay_api_no_data');
-    }
-    if (data.result?.code !== 0 || !Array.isArray(data.replayFiles)) {
-        throw new Error('replay_api_no_data');
-    }
-    const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
-    if (!replayFile)
-        throw new Error('no_replay_file');
-    if (replayFile.url)
-        updatePatchFromUrl(replayFile.url);
-    const blobResponse = await fetch(replayFile.url as string);
+    updatePatchFromUrl(replayUrl);
+    const blobResponse = await fetch(replayUrl);
     if (!blobResponse.ok)
         throw new Error(`blob_fetch_${blobResponse.status}`);
     const arrayBuffer = await blobResponse.arrayBuffer();

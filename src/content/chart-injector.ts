@@ -7,21 +7,46 @@
     pointBackgroundColor?: unknown;
   };
 
+  type ChartElement = {
+    options?: Record<string, unknown>;
+    $animations?: Record<string, { _to?: unknown; _from?: unknown } | undefined>;
+  };
+
+  type ChartController = {
+    _cachedDataOpts?: Record<string, unknown>;
+    _resolverCache?: Record<string, unknown>;
+  };
+
+  type ChartMeta = {
+    index: number;
+    controller?: ChartController;
+    dataset?: ChartElement;
+    data?: ChartElement[];
+    $animations?: Record<string, unknown>;
+  };
+
   type ChartInstance = {
     data?: {
       datasets?: ChartDataset[];
     };
     update(mode?: string): void;
+    getDatasetMeta?(index: number): ChartMeta;
   };
 
   type ChartPrototype = {
     update: (...args: unknown[]) => unknown;
   };
 
+  type ChartPlugin = {
+    id: string;
+    beforeUpdate?: (chart: ChartInstance) => void;
+  };
+
   type ChartLibrary = ((...args: unknown[]) => unknown) & {
     prototype: ChartPrototype;
     getChart: (...args: unknown[]) => unknown;
     instances: Record<string, ChartInstance>;
+    register?: (...args: unknown[]) => void;
   };
 
   type ChartModule = Record<string, unknown>;
@@ -90,29 +115,95 @@
       const hex = colorByName.get(key);
       if (!hex) continue;
       if (ds.borderColor !== hex) { ds.borderColor = hex; changed = true; }
-      if (ds.backgroundColor !== hex && typeof ds.backgroundColor !== 'function') {
-        ds.backgroundColor = hex;
-        changed = true;
+      if (typeof ds.backgroundColor !== 'function' && ds.backgroundColor !== hex) {
+        ds.backgroundColor = hex; changed = true;
       }
       if (ds.pointBorderColor !== undefined && ds.pointBorderColor !== hex) {
-        ds.pointBorderColor = hex;
-        changed = true;
+        ds.pointBorderColor = hex; changed = true;
       }
       if (ds.pointBackgroundColor !== undefined && ds.pointBackgroundColor !== hex) {
-        ds.pointBackgroundColor = hex;
-        changed = true;
+        ds.pointBackgroundColor = hex; changed = true;
       }
     }
     return changed;
   }
 
+  /** Clear Chart.js v4 internal option-resolver caches for a dataset.
+   *  Without this, hover/animation cycles restore stale cached colors. */
+  function resetChartColorCache(chart: ChartInstance, datasetIndex: number): void {
+    if (!chart.getDatasetMeta) return;
+    try {
+      const meta = chart.getDatasetMeta(datasetIndex);
+      if (!meta) return;
+      const ctrl = meta.controller;
+      if (ctrl) {
+        if (ctrl._cachedDataOpts) ctrl._cachedDataOpts = {};
+        if (ctrl._resolverCache) ctrl._resolverCache = {};
+      }
+      // Sync the line element's resolved options to our color
+      const ds = chart.data?.datasets?.[datasetIndex];
+      if (!ds) return;
+      const hex = ds.borderColor;
+      if (meta.dataset?.options) {
+        meta.dataset.options.borderColor = hex;
+        if (typeof ds.backgroundColor !== 'function') {
+          meta.dataset.options.backgroundColor = ds.backgroundColor;
+        }
+      }
+      // Kill any in-flight borderColor animation so it doesn't revert
+      if (meta.dataset?.$animations?.borderColor) {
+        meta.dataset.$animations.borderColor = undefined;
+      }
+      // Sync point elements
+      if (meta.data) {
+        for (const el of meta.data) {
+          if (el.options) {
+            el.options.borderColor = hex;
+            if (typeof ds.backgroundColor !== 'function') {
+              el.options.backgroundColor = ds.backgroundColor;
+            }
+          }
+          if (el.$animations?.borderColor) {
+            el.$animations.borderColor = undefined;
+          }
+        }
+      }
+    } catch (_) { /* defensive – internal API may vary */ }
+  }
+
+  let pluginRegistered = false;
+
+  /** Register a Chart.js plugin that re-applies our colors before every
+   *  update cycle (including hover-triggered ones). This ensures the
+   *  option resolver always picks up our colors, not the cached originals. */
+  function registerRecolorPlugin(Chart: ChartLibrary): void {
+    if (pluginRegistered || !Chart.register) return;
+    pluginRegistered = true;
+
+    const plugin: ChartPlugin = {
+      id: 'aoe4-persistent-recolor',
+      beforeUpdate(chart: ChartInstance): void {
+        if (!colorByName.size) return;
+        applyColorsToChart(chart);
+      },
+    };
+    Chart.register(plugin);
+  }
+
+  const coloredCharts = new WeakSet<ChartInstance>();
   function patchChartPrototype(Chart: ChartLibrary): void {
     if (patched) return;
     patched = true;
-    const proto = Chart.prototype;
-    const origUpdate = proto.update;
-    proto.update = function patchedUpdate(this: ChartInstance, ...args: unknown[]): unknown {
-      try { applyColorsToChart(this); } catch (_) {}
+    registerRecolorPlugin(Chart);
+
+    const origUpdate = Chart.prototype.update;
+    Chart.prototype.update = function patchedUpdate(this: ChartInstance, ...args: unknown[]): unknown {
+      if (colorByName.size && !coloredCharts.has(this)) {
+        applyColorsToChart(this);
+        coloredCharts.add(this);
+        // Render once with 'none' so Chart.js parses our colors as the baseline
+        origUpdate.call(this, 'none');
+      }
       return origUpdate.apply(this, args);
     };
   }
@@ -122,7 +213,12 @@
     let updated = 0;
     for (const chart of Object.values(Chart.instances)) {
       if (applyColorsToChart(chart)) {
-        try { chart.update('none'); updated++; } catch (_) {}
+        coloredCharts.add(chart);
+        try {
+          if (typeof chart.stop === 'function') chart.stop();
+          chart.update('none');
+          updated++;
+        } catch (_) {}
       }
     }
     return updated;

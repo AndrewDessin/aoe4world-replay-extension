@@ -9,7 +9,7 @@
 // the keys the extension consumes (n=display name, k=family id / merge key,
 // i=canonical CDN icon URL).
 //
-// Run: `node scripts/build-pbgid-map.mjs`. CI does this before zipping the
+// Run: `node build/build-pbgid-map.mjs`. CI does this before zipping the
 // extension so every release ships fresh data. On upstream fetch failure
 // (network outage, GitHub down, schema rename) the script keeps the existing
 // committed `chrome-extension/data/pbgid-map.json` so releases aren't blocked

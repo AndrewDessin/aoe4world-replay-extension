@@ -1,0 +1,14 @@
+{
+  "lspServers": {
+    "typescript": {
+      "command": "C:\\Users\\andre\\AppData\\Roaming\\npm\\typescript-language-server.cmd",
+      "args": ["--stdio"],
+      "fileExtensions": {
+        ".ts": "typescript",
+        ".tsx": "typescriptreact",
+        ".js": "javascript",
+        ".jsx": "javascriptreact"
+      }
+    }
+  }
+}

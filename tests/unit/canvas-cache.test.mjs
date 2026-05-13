@@ -321,6 +321,46 @@ describe('isHighlightForPlayer', () => {
   });
 });
 
+describe('renderer highlight condition', () => {
+  function isItemHighlighted(chart, item) {
+    return !chart.highlightKey
+      || chart.highlightKey === item.key
+      || (item.playerName && chart.highlightKey.startsWith('__player__:') && isHighlightForPlayer(chart, item.playerName));
+  }
+
+  it('highlights all items when no highlightKey is set', () => {
+    const s = armySeries('knight', { values: [1], playerName: 'Alice' });
+    const chart = makeChart('army', [s]);
+    assert.ok(isItemHighlighted(chart, s));
+  });
+
+  it('highlights only the matching unit when highlightKey is a unit key', () => {
+    const s1 = armySeries('knight', { values: [1], playerName: 'Alice' });
+    const s2 = armySeries('archer', { values: [1], playerName: 'Alice' });
+    const chart = makeChart('army', [s1, s2], { highlightKey: 'knight' });
+    assert.ok(isItemHighlighted(chart, s1));
+    assert.ok(!isItemHighlighted(chart, s2));
+  });
+
+  it('highlights all units of a player when highlightKey is a player cache key', () => {
+    const s1 = armySeries('knight', { values: [1], playerName: 'Alice' });
+    const s2 = armySeries('archer', { values: [1], playerName: 'Alice' });
+    const s3 = armySeries('spearman', { values: [1], playerName: 'Bob' });
+    const chart = makeChart('army', [s1, s2, s3], { highlightKey: playerCacheKey('Alice') });
+    assert.ok(isItemHighlighted(chart, s1));
+    assert.ok(isItemHighlighted(chart, s2));
+    assert.ok(!isItemHighlighted(chart, s3));
+  });
+
+  it('does not use player-level matching for non-player highlight keys', () => {
+    const s1 = armySeries('knight', { values: [1], playerName: 'Alice' });
+    const s2 = armySeries('archer', { values: [1], playerName: 'Alice' });
+    const chart = makeChart('army', [s1, s2], { highlightKey: 'knight' });
+    assert.ok(isItemHighlighted(chart, s1));
+    assert.ok(!isItemHighlighted(chart, s2));
+  });
+});
+
 describe('playerValueSumAt', () => {
   it('sums absolute values for matching player at index', () => {
     const s1 = armySeries('knight', { values: [10, 20], playerName: 'Alice' });

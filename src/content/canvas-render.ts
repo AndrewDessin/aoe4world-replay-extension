@@ -152,7 +152,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
       if (!item.key) continue;
       const ys = renderedY.get(item.key) as StackedYCache | undefined;
       if (!ys?.stackBase || !ys?.stackTop) continue;
-      const highlighted = !chart.highlightKey || chart.highlightKey === item.key;
+      const highlighted = !chart.highlightKey || chart.highlightKey === item.key || (item.playerName && chart.highlightKey.startsWith('__player__:') && isHighlightForPlayer(chart, item.playerName));
 
       ctx.globalAlpha = highlighted ? 0.5 : 0.08;
       ctx.fillStyle = item.color;
@@ -187,7 +187,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
     for (const item of series) {
       if (item._hidden || !item.values.length) continue;
       if (!item.key) continue;
-      const highlighted = !chart.highlightKey || chart.highlightKey === item.key;
+      const highlighted = !chart.highlightKey || chart.highlightKey === item.key || (item.playerName && chart.highlightKey.startsWith('__player__:') && isHighlightForPlayer(chart, item.playerName));
       const ys = renderedY.get(item.key) as Float32Array | undefined;
       if (!ys) continue;
 
@@ -224,7 +224,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
       if (item._hidden) continue;
       if (!item.key) continue;
       ctx.strokeStyle = item.color;
-      const highlighted = !chart.highlightKey || chart.highlightKey === item.key;
+      const highlighted = !chart.highlightKey || chart.highlightKey === item.key || (item.playerName && chart.highlightKey.startsWith('__player__:') && isHighlightForPlayer(chart, item.playerName));
       ctx.globalAlpha = highlighted ? 1 : 0.18;
       ctx.lineWidth = highlighted ? 2.25 : 1.25;
       ctx.beginPath();

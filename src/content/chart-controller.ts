@@ -1,6 +1,6 @@
 import { findTimelineElements, getGameIdFromUrl } from './dom.ts';
 import { niceGeometryForChart } from './canvas-geom.ts';
-import { chartsEnabled, recolorEnabled, settingsReady } from './settings.ts';
+import { chartsEnabled, recolorEnabled, settingsReady, onSettingsChange } from './settings.ts';
 import {
   ensureChartInjector,
   sendChartInjectorMessage,
@@ -80,6 +80,13 @@ export function tryAddSummaryCharts(): void {
   timeline.root.dataset.aoe4SummaryPlusUrl = url;
   timeline.root.__aoe4GameId = gameId;
   delete timeline.root.__aoe4ColorsRequestedFor;
+
+  // Prefetch replay colors in parallel with summary fetch
+  if (recolorEnabled()) {
+    chrome.runtime.sendMessage({ type: 'getPlayerColors', matchId: gameId }, () => {
+      if (chrome.runtime.lastError) { /* swallow — real handling in ensureReplayPlayerColors */ }
+    });
+  }
 
   fetch(toAbsoluteUrl(url), { headers: { Accept: 'application/json' } })
     .then((response: Response) => {
@@ -293,8 +300,11 @@ function handleTimelineMetricEvent(event: Event, timeline: TimelineElements): vo
 
 function ensureReplayPlayerColors(timeline: TimelineElements): void {
   if (!recolorEnabled()) {
-    settingsReady.then(() => {
-      if (recolorEnabled()) ensureReplayPlayerColors(timeline);
+    const unsub = onSettingsChange(() => {
+      if (recolorEnabled()) {
+        unsub();
+        ensureReplayPlayerColors(timeline);
+      }
     });
     return;
   }
@@ -363,7 +373,7 @@ function syncSelectValue(select: TimelineElements['select'], value: string, isVa
   setTimeout(apply, 500);
 }
 
-function replaceTimelineCanvasForSummary(timeline: TimelineElements): TimelineElements['canvas'] {
+function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canvas'] {
   const oldCanvas = timeline.canvas;
   if (!oldCanvas?.parentElement) return oldCanvas;
   detachCanvasTooltip(oldCanvas);
@@ -391,7 +401,7 @@ function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
     timeline.heading.dataset.aoe4NativeTitle = timeline.heading.textContent || '';
   }
   timeline.heading.textContent = chart.title;
-  const canvas = replaceTimelineCanvasForSummary(timeline);
+  const canvas = ensureSummaryCanvas(timeline);
   canvas.style.display = '';
   if (chart.type === 'army') renderArmyUnitLegend(timeline, chart);
   else removeArmyUnitLegend(timeline);

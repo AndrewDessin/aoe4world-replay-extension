@@ -311,6 +311,8 @@ export interface CanvasTooltipHandlers {
 export interface PlayerToggleHandler {
   row: HTMLElement;
   onClick: (event: MouseEvent) => void;
+  onEnter?: () => void;
+  onLeave?: () => void;
 }
 
 export interface UnitDataEntry {
@@ -356,6 +358,7 @@ export interface UnitIconTarget {
 }
 
 export interface Settings {
+  parseGameData: boolean;
   recolorSwatches: boolean;
   injectCharts: boolean;
   debugLogs: boolean;

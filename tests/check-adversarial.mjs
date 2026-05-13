@@ -13,7 +13,7 @@
 //        Parser must throw parse_struct_invariant_violation.
 //   T4 — Truncate fixture mid-FOLDINFO: parser must throw cleanly.
 //
-// Run: node scripts/check-adversarial.mjs
+// Run: node tests/check-adversarial.mjs
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
@@ -21,8 +21,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
-const FIXTURES_DIR = path.join(REPO_ROOT, 'chrome-extension', 'test-fixtures');
-const PARSER_URL = pathToFileURL(path.join(REPO_ROOT, 'chrome-extension', 'replay-parser.js')).href;
+const FIXTURES_DIR = path.join(REPO_ROOT, 'tests', 'fixtures', 'replay');
+const PARSER_URL = pathToFileURL(path.join(REPO_ROOT, 'src', 'background', 'replay-parser.ts')).href;
 const parser = await import(PARSER_URL);
 
 let pass = 0, fail = 0;

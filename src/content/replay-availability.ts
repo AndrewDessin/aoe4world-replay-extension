@@ -14,6 +14,7 @@ interface ReplayCacheEntry {
 
 interface CurrentPatchResponse {
   patch?: string | null;
+  previousPatch?: string | null;
   patches?: Array<string | null>;
 }
 
@@ -27,6 +28,7 @@ interface BatchReplayResponse {
   available?: Record<string, boolean>;
   gamePatches?: Record<string, string | null>;
   currentPatch?: string | null;
+  previousPatch?: string | null;
   knownPatches?: Array<string | null>;
 }
 
@@ -34,7 +36,7 @@ const pendingChecks = new Map<string, PendingReplayCheck[]>();
 
 async function getCached(gameId: string): Promise<ReplayAvailabilityResult | undefined> {
   try {
-    const key = 'replay_' + gameId;
+    const key = 'replay_v2_' + gameId;
     const result = await chrome.storage.local.get(key) as Record<string, ReplayCacheEntry | undefined>;
     const entry = result[key];
     if (!entry) return undefined;
@@ -46,8 +48,7 @@ async function getCached(gameId: string): Promise<ReplayAvailabilityResult | und
       const curPatch = patchResp?.patch;
       if (curPatch) {
         if (entry.patch === curPatch) return { available: true, prevPatch: false };
-        const patches = patchResp?.patches || [];
-        const prevPatch = patches[1] || null;
+        const prevPatch = patchResp?.previousPatch;
         if (prevPatch && entry.patch === prevPatch) return { available: true, prevPatch: true };
         return { available: false, prevPatch: false };
       }
@@ -70,7 +71,7 @@ async function getCached(gameId: string): Promise<ReplayAvailabilityResult | und
 
 function setCache(gameId: string, available: boolean | 'prev', permanent = false, patch: string | null = null): void {
   try {
-    const key = 'replay_' + gameId;
+    const key = 'replay_v2_' + gameId;
     void chrome.storage.local.set({ [key]: { value: available, time: Date.now(), permanent, patch } });
   } catch { }
 }
@@ -161,23 +162,12 @@ async function runBatch(): Promise<void> {
         let result: ReplayAvailabilityResult = { available: false, prevPatch: false };
         if (has) {
           const curPatch = resp?.currentPatch || null;
-          const patches = resp?.knownPatches || [];
-          const prevPatch = patches[1] || null;
+          const prevPatch = resp?.previousPatch || null;
 
           if (!curPatch || !gamePatch || gamePatch === curPatch) {
             result = { available: true, prevPatch: false };
           } else if (prevPatch && gamePatch === prevPatch) {
             result = { available: true, prevPatch: true };
-          } else {
-            result = { available: false, prevPatch: false };
-            const row = document.querySelector(`[data-game-id="${id}"]`);
-            if (row) {
-              const ts = getGameTimestamp(row);
-              if (ts && (!oldPatchCutoffDate || ts > oldPatchCutoffDate)) {
-                oldPatchCutoffDate = ts;
-                dbg(`[replay] Old patch cutoff set: ${oldPatchCutoffDate}`);
-              }
-            }
           }
         }
 

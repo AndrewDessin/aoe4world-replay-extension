@@ -3,8 +3,9 @@ import type { Settings } from './types.ts';
 type SettingsChangeSubscriber = (prev: Settings, next: Settings) => void;
 
 export const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({
+  parseGameData: false,
   recolorSwatches: false,
-  injectCharts: true,
+  injectCharts: false,
   debugLogs: false,
 });
 
@@ -34,14 +35,15 @@ export function removeEarlyHideStyle(): void {
 export function applySettings(stored?: Partial<Settings> | null): void {
   const prev = SETTINGS;
   SETTINGS = { ...SETTINGS_DEFAULTS, ...(stored || {}) };
-  writeRecolorHint(SETTINGS.recolorSwatches);
+  writeRecolorHint(SETTINGS.parseGameData && SETTINGS.recolorSwatches);
   for (const cb of subscribers) {
     try { cb(prev, SETTINGS); } catch (e) { console.warn('[settings] subscriber error', e); }
   }
 }
 
-export function recolorEnabled(): boolean { return SETTINGS.recolorSwatches === true; }
-export function chartsEnabled(): boolean { return SETTINGS.injectCharts !== false; }
+export function parseGameDataEnabled(): boolean { return SETTINGS.parseGameData === true; }
+export function recolorEnabled(): boolean { return parseGameDataEnabled() && SETTINGS.recolorSwatches === true; }
+export function chartsEnabled(): boolean { return parseGameDataEnabled() && SETTINGS.injectCharts === true; }
 
 export const dbg = (...args: unknown[]): void => { if (SETTINGS.debugLogs) console.log(...args); };
 export const dbgWarn = (...args: unknown[]): void => { if (SETTINGS.debugLogs) console.warn(...args); };
