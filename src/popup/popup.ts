@@ -1,3 +1,7 @@
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 type PopupSettings = {
   recolorSwatches: boolean;
   injectCharts: boolean;
@@ -108,14 +112,14 @@ function render(favorites: FavoritesById, count: number, max: number): void {
     
     const pageUrl = meta.pageUrl || `https://aoe4world.com/api/v0/games/${id}`;
     item.innerHTML = `
-      <button class="btn btn-fav" data-id="${id}" data-saved="true" title="Remove from saved" style="font-size:18px;cursor:pointer;background:none;border:none;color:#ffd43b;">&#9733;</button>
+      <button class="btn btn-fav" data-id="${esc(id)}" data-saved="true" title="Remove from saved" style="font-size:18px;cursor:pointer;background:none;border:none;color:#ffd43b;">&#9733;</button>
       <div class="fav-info">
-        <div class="fav-header"><a href="#" data-url="${pageUrl}">${playersStr}</a></div>
-        <div class="fav-sub">${meta.mode || ''} &middot; ${meta.map || ''}</div>
-        <div class="fav-date">${date}</div>
+        <div class="fav-header"><a href="#" data-url="${esc(pageUrl)}">${esc(playersStr)}</a></div>
+        <div class="fav-sub">${esc(meta.mode || '')} &middot; ${esc(meta.map || '')}</div>
+        <div class="fav-date">${esc(date)}</div>
       </div>
       <div class="fav-actions">
-        <button class="btn btn-play" data-id="${id}" title="Launch replay">&#9654;</button>
+        <button class="btn btn-play" data-id="${esc(id)}" title="Launch replay">&#9654;</button>
       </div>
     `;
     list.appendChild(item);
