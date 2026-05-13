@@ -52,7 +52,7 @@ test('bundle does not inject favorite star on profile/listing page', async () =>
 
 test('bundle is wrapped as IIFE (not ESM export)', () => {
   const code = readFileSync(path.join(ROOT, 'chrome-extension', 'content.js'), 'utf8');
-  const head = code.slice(0, 100);
-  assert.ok(/^\(\(\)\s*=>\s*\{|^"use strict";\(/.test(head) || /^\(function/.test(head),
-    `bundle should be IIFE; got: ${head.slice(0,60)}`);
+  const head = code.slice(0, 200).replace(/\s+/g, ' ');
+  assert.ok(/^\(?(?:"use strict";?\s*)?\(\s*\(\)\s*=>\s*\{|^\(function/.test(head),
+    `bundle should be IIFE; got: ${head.slice(0,80)}`);
 });
