@@ -184,7 +184,7 @@ async function parseReplayApiJson(response: Response, what = 'replay API'): Prom
 }
 const NATIVE_HOST = 'com.aoe4.replay_launcher';
 const MAX_FAVORITES = 10;
-const COLORS_CACHE_KEY_PREFIX = 'colors_v4_';
+const COLORS_CACHE_KEY_PREFIX = 'colors_v5_';
 const COLORS_CACHE_LIMIT = 50;
 const COLORS_NEGATIVE_TTL_MS = 60 * 60 * 1000;
 const COLORS_SOFT_FAILURE_TTL_MS = 10 * 60 * 1000;
@@ -707,10 +707,40 @@ async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorIn
     let players: PlayerColorInfo[];
     try {
         const result = await extractPlayerColors(arrayBuffer);
-        players = result.players;
-        shadowValidateStructural(arrayBuffer, result, matchId).catch((err: unknown) => {
-            console.warn('[parse-shadow] outer threw', { matchId, error: (err as { message?: string })?.message || String(err) });
-        });
+        const shouldHydrateStrings = result.players.some((p: PlayerColorInfo) => !p.name || !p.civilization);
+        if (shouldHydrateStrings) {
+            try {
+                const structural = await extractPlayerColorsStructural(arrayBuffer);
+                if (playersAgree(result.players, structural.players)) {
+                    players = mergeStructuralPlayerStrings(result.players, structural.players);
+                }
+                else {
+                    players = result.players;
+                    console.warn('[parse-shadow] structural ≠ heuristic', {
+                        matchId,
+                        chunkVersion: result.chunkVersion,
+                        heuristic: result.players.map((p: PlayerColorInfo) => ({ slot: p.slot, name: p.name, color: p.color, playerId: p.playerId })),
+                        structural: structural.players.map((p: PlayerColorInfo) => ({ slot: p.slot, name: p.name, color: p.color, playerId: p.playerId })),
+                        structuralWarnings: structural.warnings,
+                        structuralDiagnostic: structural.diagnostic,
+                    });
+                }
+            }
+            catch (err) {
+                players = result.players;
+                console.warn('[parse-shadow] structural hydrate threw', {
+                    matchId,
+                    chunkVersion: result.chunkVersion,
+                    error: (err as { message?: string })?.message || String(err),
+                });
+            }
+        }
+        else {
+            players = result.players;
+            shadowValidateStructural(arrayBuffer, result, matchId).catch((err: unknown) => {
+                console.warn('[parse-shadow] outer threw', { matchId, error: (err as { message?: string })?.message || String(err) });
+            });
+        }
     } catch (heuristicErr) {
         dbg('[parse] heuristic failed, falling back to structural', { matchId, error: (heuristicErr as { message?: string })?.message });
         const structural = await extractPlayerColorsStructural(arrayBuffer);
@@ -821,6 +851,19 @@ function playersStringDiff(heuristic: PlayerColorInfo[], structural: PlayerColor
             diffs.push({ playerId: hp.playerId, field: 'civilization', heuristic: hp.civilization, structural: sp.civilization });
     }
     return diffs;
+}
+function mergeStructuralPlayerStrings(heuristic: PlayerColorInfo[], structural: PlayerColorInfo[]): PlayerColorInfo[] {
+    const norm = (s: string | null | undefined): string | null => (s == null ? null : String(s));
+    const structuralByPid = new Map<string, PlayerColorInfo>(structural.filter((p: PlayerColorInfo) => !!p.playerId).map((p: PlayerColorInfo) => [norm(p.playerId) as string, p]));
+    return heuristic.map((player: PlayerColorInfo): PlayerColorInfo => {
+        const structuralPlayer = player.playerId ? structuralByPid.get(String(player.playerId)) : undefined;
+        if (!structuralPlayer) return player;
+        return {
+            ...player,
+            name: player.name || structuralPlayer.name,
+            civilization: player.civilization || structuralPlayer.civilization,
+        };
+    });
 }
 async function storeColorEntry(cacheKey: string, value: ColorCacheEntry): Promise<void> {
     await chrome.storage.local.set({ [cacheKey]: value });

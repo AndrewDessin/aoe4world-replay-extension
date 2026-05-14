@@ -11,6 +11,7 @@ import {
   syncRangeUi,
   applyRangeLegend,
   countInRange,
+  countAfterStartInRange,
 } from '../../src/content/range.ts';
 
 function setupDOM() {
@@ -48,6 +49,15 @@ function makeTimeline(doc) {
   chartBox.appendChild(canvas);
   return { chartBox, canvas, select };
 }
+
+describe('countAfterStartInRange', () => {
+  test('excludes the left boundary and includes the right boundary', () => {
+    const times = [10, 10, 20, 30, 30, 40];
+    assert.equal(countAfterStartInRange(times, 10, 30), 3);
+    assert.equal(countAfterStartInRange(times, 30, 40), 1);
+    assert.equal(countAfterStartInRange(times, 40, 50), 0);
+  });
+});
 
 describe('clientXToSampleIndex', () => {
   let doc, canvas;
@@ -413,7 +423,7 @@ describe('applyRangeLegend', () => {
     assert.equal(rowEl.style.display, 'none');
   });
 
-  test('hides row when trained=0 and lost=0', () => {
+  test('hides row when trained=0, lost=0, and unit is absent throughout the range', () => {
     const chart = makeChart('army', 'army', [0, 10, 20]);
     const rowEl = doc.createElement('tr');
     const totalEl = doc.createElement('td');
@@ -435,7 +445,7 @@ describe('applyRangeLegend', () => {
       _hidden: false,
       _finishedTimes: [],
       _destroyedTimes: [],
-      values: [5, 10, 15],
+      values: [0, 0, 0],
     }];
     const timeline = makeTimeline(doc);
     timeline.chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 0, endIdx: 2 };
@@ -443,6 +453,119 @@ describe('applyRangeLegend', () => {
     applyRangeLegend(chart, timeline);
     assert.equal(rowEl.style.display, 'none');
     assert.ok(summaryLabelEl.innerHTML.includes('—'));
+  });
+
+  test('keeps unit rows that existed during the range even without train/loss events', () => {
+    const chart = makeChart('army', 'army', [0, 10, 20, 30]);
+    const rowEl = doc.createElement('tr');
+    const totalEl = doc.createElement('td');
+    const deltaTrainedEl = doc.createElement('td');
+    const deltaLostEl = doc.createElement('td');
+    const node = { rowEl, totalEl, deltaTrainedEl, deltaLostEl };
+    const unit = {
+      key: 'unit-existing',
+      playerName: 'P1',
+      _hidden: false,
+      _finishedTimes: [],
+      _destroyedTimes: [],
+      values: [0, 4, 4, 4],
+      unitLabel: 'Existing Unit',
+      label: 'Existing Unit',
+    };
+    const summaryLabelEl = doc.createElement('td');
+    chart._legendNodes = new Map([
+      ['unit-existing', node],
+      ['__summary__P1', {
+        panelEl: { style: { display: '' } },
+        summaryLabelEl,
+        units: [unit],
+      }],
+    ]);
+    chart.data.series = [unit];
+    const timeline = makeTimeline(doc);
+    timeline.chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 1, endIdx: 3 };
+
+    applyRangeLegend(chart, timeline);
+
+    assert.equal(rowEl.style.display, '');
+    assert.equal(totalEl.textContent, '4');
+    assert.equal(deltaTrainedEl.textContent, '0');
+    assert.equal(deltaLostEl.textContent, '0');
+    assert.ok(summaryLabelEl.innerHTML.includes('Existing Unit'));
+  });
+
+  test('keeps units produced and lost entirely inside the range', () => {
+    const chart = makeChart('army', 'army', [0, 10, 20, 30]);
+    const rowEl = doc.createElement('tr');
+    const totalEl = doc.createElement('td');
+    const deltaTrainedEl = doc.createElement('td');
+    const deltaLostEl = doc.createElement('td');
+    const node = { rowEl, totalEl, deltaTrainedEl, deltaLostEl };
+    const unit = {
+      key: 'unit-produced-lost',
+      playerName: 'P1',
+      _hidden: false,
+      _finishedTimes: [15],
+      _destroyedTimes: [25],
+      values: [0, 0, 1, 0],
+      unitLabel: 'Burst Unit',
+      label: 'Burst Unit',
+    };
+    chart._legendNodes = new Map([
+      ['unit-produced-lost', node],
+      ['__summary__P1', {
+        panelEl: { style: { display: '' } },
+        summaryLabelEl: doc.createElement('td'),
+        units: [unit],
+      }],
+    ]);
+    chart.data.series = [unit];
+    const timeline = makeTimeline(doc);
+    timeline.chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 1, endIdx: 3 };
+
+    applyRangeLegend(chart, timeline);
+
+    assert.equal(rowEl.style.display, '');
+    assert.equal(totalEl.textContent, '0');
+    assert.equal(deltaTrainedEl.textContent, '1');
+    assert.equal(deltaLostEl.textContent, '1');
+  });
+
+  test('excludes left-boundary events from deltas and prevents impossible negative range totals', () => {
+    const chart = makeChart('army', 'army', [0, 10, 20]);
+    const rowEl = doc.createElement('tr');
+    const totalEl = doc.createElement('td');
+    const deltaTrainedEl = doc.createElement('td');
+    const deltaLostEl = doc.createElement('td');
+    const node = { rowEl, totalEl, deltaTrainedEl, deltaLostEl };
+    const unit = {
+      key: 'iron-pagoda',
+      playerName: 'P1',
+      _hidden: false,
+      _finishedTimes: [10, 15],
+      _destroyedTimes: [10, 12, 14, 16, 18, 20, 20, 20],
+      values: [7, 6, 0],
+      unitLabel: 'Iron Pagoda',
+      label: 'Iron Pagoda',
+    };
+    chart._legendNodes = new Map([
+      ['iron-pagoda', node],
+      ['__summary__P1', {
+        panelEl: { style: { display: '' } },
+        summaryLabelEl: doc.createElement('td'),
+        units: [unit],
+      }],
+    ]);
+    chart.data.series = [unit];
+    const timeline = makeTimeline(doc);
+    timeline.chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 1, endIdx: 2 };
+
+    applyRangeLegend(chart, timeline);
+
+    assert.equal(totalEl.textContent, '6');
+    assert.equal(deltaTrainedEl.textContent, '1');
+    assert.equal(deltaLostEl.textContent, '7');
+    assert.ok(Number(totalEl.textContent) + Number(deltaTrainedEl.textContent) - Number(deltaLostEl.textContent) >= 0);
   });
 
   test('skips series item with no key', () => {

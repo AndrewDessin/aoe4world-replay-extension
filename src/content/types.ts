@@ -236,6 +236,7 @@ export interface CanvasExtensions {
   __aoe4SummaryHandlers?: CanvasTooltipHandlers;
   __aoe4SummarySuppress?: (event: MouseEvent) => void;
   __aoe4HoverActive?: boolean;
+  __aoe4ActiveChart?: Chart | null;
   __aoe4AnimationFrame?: number | null;
   __aoe4AnimationToken?: symbol | null;
   __aoe4IconRedrawFrame?: number | null;

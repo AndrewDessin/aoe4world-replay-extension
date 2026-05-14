@@ -43,8 +43,19 @@ async function scrollToTimeline() {
 function getNativeCanvas() {
   return page.evaluate(() => {
     const c = [...document.querySelectorAll('canvas')].find(c => !c.className.includes('aoe4'));
-    return c ? c.toDataURL().length : null;
+    if (!c) return null;
+    const data = c.toDataURL();
+    let hash = 2166136261;
+    for (let i = 0; i < data.length; i++) {
+      hash ^= data.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return { length: data.length, hash: hash.toString(16) };
   });
+}
+
+function canvasSignature(value) {
+  return value ? `${value.length}:${value.hash}` : null;
 }
 
 // --- Tests ---
@@ -91,21 +102,37 @@ function assert(condition, msg) {
   console.log('\n=== Native Chart Hover ===');
   await scrollToTimeline();
 
-  await test('replay colors persist after hover', async () => {
+  await test('hovering legend name changes native canvas', async () => {
     const before = await getNativeCanvas();
     const legend = await page.$('.flex.items-center.cursor-pointer');
     assert(legend, 'no legend item found');
     await legend.hover();
     await page.waitForTimeout(300);
+    const after = await getNativeCanvas();
+    assert(canvasSignature(before) !== canvasSignature(after), `canvas unchanged on hover: ${canvasSignature(before)} -> ${canvasSignature(after)}`);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(500);
+  });
+
+  await test('replay colors persist after hover ends', async () => {
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(500);
+    const before = await getNativeCanvas();
+    const legend = await page.$('.flex.items-center.cursor-pointer');
+    if (legend) {
+      await legend.hover();
+      await page.waitForTimeout(300);
+    }
     await page.mouse.move(0, 0);
     await page.waitForTimeout(500);
     const after = await getNativeCanvas();
-    assert(before === after, `colors changed after hover cycle: ${before} -> ${after}`);
+    assert(canvasSignature(before) === canvasSignature(after), `colors changed after hover: ${canvasSignature(before)} -> ${canvasSignature(after)}`);
   });
 
   console.log('\n=== Color Recoloring ===');
 
   await test('DOM swatches are recolored', async () => {
+    await page.waitForFunction(() => document.querySelectorAll('[data-aoe4-recolored]').length > 0, null, { timeout: 20000 }).catch(() => {});
     const count = await page.evaluate(() => document.querySelectorAll('[data-aoe4-recolored]').length);
     assert(count > 0, `no recolored elements, got ${count}`);
   });
@@ -114,7 +141,31 @@ function assert(condition, msg) {
     const val = await getNativeCanvas();
     // No-extension baseline for this game is ~52290; with colors it should be different
     assert(val !== null, 'canvas not found');
-    assert(val > 50000, `canvas too small: ${val}`);
+    assert(val.length > 50000, `canvas too small: ${val.length}`);
+    const gateActive = await page.evaluate(() => !!document.getElementById('__aoe4-color-ext-chart-gate'));
+    assert(!gateActive, 'chart color gate should be released after recolor');
+  });
+
+  await test('turning off parent setting restores recolored swatches', async () => {
+    await page.waitForFunction(() => document.querySelectorAll('[data-aoe4-recolored]').length > 0, null, { timeout: 20000 }).catch(() => {});
+    const before = await page.evaluate(() => document.querySelectorAll('[data-aoe4-recolored]').length);
+    assert(before > 0, `expected recolored swatches before disable, got ${before}`);
+    await bg.evaluate(() => new Promise(r => chrome.storage.local.set({
+      settings: { parseGameData: false, injectCharts: true, recolorSwatches: true, debugLogs: false }
+    }, r)));
+    await page.waitForTimeout(1000);
+    const state = await page.evaluate(() => ({
+      recolored: document.querySelectorAll('[data-aoe4-recolored]').length,
+      earlyHide: !!document.getElementById('__aoe4-color-ext-hide'),
+      activeHide: !!document.getElementById('__aoe4-color-ext-hide-active'),
+    }));
+    assert(state.recolored === 0, `expected recolored attrs cleared, got ${state.recolored}`);
+    assert(!state.earlyHide, 'early hide style should be removed after disabling');
+    assert(!state.activeHide, 'active hide style should be removed after disabling');
+    await bg.evaluate(() => new Promise(r => chrome.storage.local.set({
+      settings: { parseGameData: true, injectCharts: true, recolorSwatches: true, debugLogs: false }
+    }, r)));
+    await page.waitForTimeout(500);
   });
 
   console.log('\n=== URL Edge Cases ===');
@@ -223,9 +274,50 @@ function assert(condition, msg) {
 
   console.log('\n=== SPA Navigation ===');
 
-  await test('navigating to another game via SPA loads new charts', async () => {
+  await test('SPA navigation from game list into game loads recolor injector', async () => {
+    await navigate(GAME_LIST, 12000);
+    const gameLink = await page.$('a[href*="/games/"][role="cell"]');
+    if (!gameLink) {
+      console.log('    (skipped — no game link found for list SPA recolor test)');
+      return;
+    }
+    await gameLink.click();
+    await page.waitForTimeout(12000);
+    const state = await page.evaluate(() => ({
+      charts: document.querySelector('optgroup[data-aoe4-summary-plus]')?.querySelectorAll('option').length || 0,
+      recolored: document.querySelectorAll('[data-aoe4-recolored]').length,
+    }));
+    assert(state.charts > 0, `no charts after list SPA navigation, got ${state.charts}`);
+    assert(state.recolored > 0, `no recolored swatches after list SPA navigation, got ${state.recolored}`);
+  });
+
+  await test('SPA navigation away from game clears recolor state', async () => {
+    const before = await page.evaluate(() => document.querySelectorAll('[data-aoe4-recolored]').length);
+    assert(before > 0, `expected recolored swatches before leaving game, got ${before}`);
     await page.click('a[href*="/players/"]');
     await page.waitForTimeout(3000);
+    const state = await page.evaluate(() => new Promise(resolve => {
+      const host = document.createElement('div');
+      host.innerHTML = '<span class="rounded-full w-2 h-2" style="background: #0162FF"></span><span>Spartain</span>';
+      document.body.appendChild(host);
+      requestAnimationFrame(() => setTimeout(() => resolve({
+        fakeRecolored: host.querySelectorAll('[data-aoe4-recolored]').length,
+        earlyHide: !!document.getElementById('__aoe4-color-ext-hide'),
+        activeHide: !!document.getElementById('__aoe4-color-ext-hide-active'),
+        chartGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+      }), 50));
+    }));
+    assert(state.fakeRecolored === 0, `stale injector recolored non-game route fake swatch: ${state.fakeRecolored}`);
+    assert(!state.earlyHide, 'early hide style should be removed after leaving game route');
+    assert(!state.activeHide, 'active hide style should be removed after leaving game route');
+    assert(!state.chartGate, 'chart color gate should be removed after leaving game route');
+  });
+
+  await test('navigating to another game via SPA loads new charts', async () => {
+    if (/\/games\/\d+/.test(page.url())) {
+      await page.click('a[href*="/players/"]');
+      await page.waitForTimeout(3000);
+    }
     // Click on a game link from the profile
     const gameLink = await page.$('a[href*="/games/"][role="cell"]');
     if (gameLink) {
@@ -255,7 +347,7 @@ function assert(condition, msg) {
   await test('color cache entries exist', async () => {
     const count = await bg.evaluate(() => new Promise(r => {
       chrome.storage.local.get(null, items => {
-        r(Object.keys(items).filter(k => k.startsWith('colors_v4_')).length);
+        r(Object.keys(items).filter(k => k.startsWith('colors_v5_')).length);
       });
     }));
     assert(count > 0, `no color cache entries, got ${count}`);
@@ -277,6 +369,10 @@ function assert(condition, msg) {
   await test('no recolored swatches when features disabled', async () => {
     const count = await page.evaluate(() => document.querySelectorAll('[data-aoe4-recolored]').length);
     assert(count === 0, `expected 0 recolored, got ${count}`);
+    const earlyHide = await page.evaluate(() => !!document.getElementById('__aoe4-color-ext-hide'));
+    assert(!earlyHide, 'early hide style should not remain when features are disabled');
+    const gateActive = await page.evaluate(() => !!document.getElementById('__aoe4-color-ext-chart-gate'));
+    assert(!gateActive, 'chart color gate should not remain when features are disabled');
   });
 
   await teardown();

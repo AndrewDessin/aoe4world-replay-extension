@@ -26,12 +26,21 @@ test('civsOverlap matches prefix and _ha_ variants', () => {
   assert.equal(civsOverlap('jindynasty', 'jin_dynasty'), true);
 });
 
+test('uses aoe4world native hues for existing color slots', () => {
+  assert.deepEqual(AOE4_PLAYER_COLOR_HEX.slice(0, 8), [
+    '#0162FF', '#F60000', '#FFEE00', '#4DE94C',
+    '#41D8FF', '#8E00FF', '#FF8C00', '#FF3395',
+  ]);
+  assert.deepEqual(PLAYER_COLORS.slice(0, 8), AOE4_PLAYER_COLOR_HEX.slice(0, 8));
+  assert.deepEqual(AOE4_PLAYER_COLOR_HEX.slice(8, 10), ['#C000C0', '#166534']);
+});
+
 test('parseCssColor handles rgb, hex3, hex6, garbage', () => {
   assert.deepEqual(parseCssColor('rgb(1, 2, 3)'), [1, 2, 3]);
   assert.deepEqual(parseCssColor('rgba(10,20,30,0.5)'), [10, 20, 30]);
   assert.deepEqual(parseCssColor('#abc'), [170, 187, 204]);
   assert.deepEqual(parseCssColor('#aabbcc'), [170, 187, 204]);
-  assert.deepEqual(parseCssColor('not-a-color'), [77, 171, 247]);
+  assert.deepEqual(parseCssColor('not-a-color'), [1, 98, 255]);
 });
 
 test('shadeColor clamps to [24,245] and is unchanged at total=1', () => {
@@ -68,6 +77,22 @@ test('lookupReplayColorIndex prefers name+civ, then unique name, then slot', () 
   assert.equal(lookupReplayColorIndex(dlcSummary, { name: 'Mirror', civilizationAttrib: 'jindynasty' }, 7), 8);
   assert.equal(lookupReplayColorIndex(dlcSummary, { name: 'Mirror', civilization: 'English' }, 7), 9);
   assert.equal(playerColor(dlcSummary, { name: 'Mirror', civilizationAttrib: 'jin dynasty' }, 7), AOE4_PLAYER_COLOR_HEX[8]);
+});
+
+test('lookupReplayColorIndex uses exact names before slot fallback in reordered team games', () => {
+  const summary = {
+    _aoe4ReplayPlayers: [
+      { slot: 0, name: '[ODW ] Ours', civilization: 'lancaster', color: 7 },
+      { slot: 1, name: '[ODW] Firefooxs', civilization: 'sultanate', color: 0 },
+      { slot: 2, name: '1 John 2:1', civilization: 'chinese', color: 8 },
+      { slot: 3, name: 'Twon LEGEND', civilization: 'byzantine_ha_mac', color: 9 },
+    ],
+  };
+
+  assert.equal(lookupReplayColorIndex(summary, { name: '1 John 2:1', civilizationAttrib: 'chinese' }, 0), 8);
+  assert.equal(lookupReplayColorIndex(summary, { name: 'Twon LEGEND', civilizationAttrib: 'byzantine_ha_mac' }, 1), 9);
+  assert.equal(lookupReplayColorIndex(summary, { name: '[ODW] Firefooxs', civilizationAttrib: 'sultanate' }, 2), 0);
+  assert.equal(lookupReplayColorIndex(summary, { name: '[ODW ] Ours', civilizationAttrib: 'lancaster' }, 3), 7);
 });
 
 test('playerColor falls back to native then PLAYER_COLORS', () => {

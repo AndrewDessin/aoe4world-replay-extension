@@ -15,7 +15,7 @@
     "test:regression": "node --experimental-strip-types --test \"tests/regression/*.test.mjs\"",
     "test": "npm run test:fixtures && npm run test:adversarial && npm run build:content && node --experimental-strip-types --test \"tests/unit/*.test.mjs\" \"tests/regression/*.test.mjs\"",
     "coverage": "node --experimental-strip-types --experimental-test-coverage --test-coverage-include=\"src/**\" --test \"tests/unit/*.test.mjs\" \"tests/regression/*.test.mjs\"",
-    "test:integration": "node tests/integration/extension.test.cjs",
+    "test:integration": "npm run build:content && node tests/integration/extension.test.cjs && node tests/integration/injected-chart-animation.test.cjs && node tests/integration/macedonian-silver.test.cjs && node tests/integration/army-icons.test.cjs",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

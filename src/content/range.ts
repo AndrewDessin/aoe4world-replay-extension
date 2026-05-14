@@ -76,6 +76,53 @@ export function countInRange(sortedTimes: number[] | undefined, t0: number, t1: 
   return lo - start;
 }
 
+export function countAfterStartInRange(sortedTimes: number[] | undefined, t0: number, t1: number): number {
+  if (!sortedTimes?.length) return 0;
+  let lo = 0;
+  let hi = sortedTimes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sortedTimes[mid] <= t0) lo = mid + 1;
+    else hi = mid;
+  }
+  const start = lo;
+  lo = start;
+  hi = sortedTimes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sortedTimes[mid] <= t1) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo - start;
+}
+
+function activeValueAt(item: { values?: number[] }, index: number): number {
+  return Math.max(0, Math.round(Math.abs(item.values?.[index] || 0)));
+}
+
+function rangeUnitStats(
+  item: { values?: number[]; _finishedTimes?: number[]; _destroyedTimes?: number[] },
+  startIdx: number,
+  endIdx: number,
+  t0: number,
+  t1: number,
+): { initial: number; end: number; trained: number; lost: number; relevant: boolean } {
+  const initial = activeValueAt(item, startIdx);
+  const end = activeValueAt(item, endIdx);
+  const trained = countAfterStartInRange(item._finishedTimes, t0, t1);
+  const rawLost = countAfterStartInRange(item._destroyedTimes, t0, t1);
+  const inferredLost = Math.max(0, initial + trained - end);
+  const maxPossibleLost = initial + trained;
+  const lost = Math.min(maxPossibleLost, Math.max(rawLost, inferredLost));
+  return {
+    initial,
+    end,
+    trained,
+    lost,
+    relevant: initial > 0 || end > 0 || trained > 0 || lost > 0,
+  };
+}
+
 export function ensureResetButton(timeline: TimelineElements | null): HTMLButtonElement | null {
   const chartBox = timeline?.chartBox;
   if (!chartBox) return null;
@@ -161,35 +208,30 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
       continue;
     }
     if (!item.playerName || !expandedPlayers.has(item.playerName)) continue;
-    const trained = countInRange(item._finishedTimes, t0, t1);
-    const lost = countInRange(item._destroyedTimes, t0, t1);
-    if (trained === 0 && lost === 0) {
+    const stats = rangeUnitStats(item, range.startIdx, range.endIdx, t0, t1);
+    if (!stats.relevant) {
       node.rowEl.style.display = 'none';
       continue;
     }
     node.rowEl.style.display = '';
     node.rowEl.classList.remove('is-closest');
-    const startValue = Math.abs(item.values?.[range.startIdx] || 0);
-    const totalText = String(Math.round(startValue));
+    const totalText = String(stats.initial);
     if (node.totalEl.textContent !== totalText) node.totalEl.textContent = totalText;
-    setDeltaCells(node, trained, lost);
+    setDeltaCells(node, stats.trained, stats.lost);
   }
 
   for (const [key, meta] of nodes) {
     if (!isSummaryNode(key, meta)) continue;
     const parts: string[] = [];
     for (const unit of meta.units) {
-      const trained = countInRange(unit._finishedTimes, t0, t1);
-      const lost = countInRange(unit._destroyedTimes, t0, t1);
-      if (trained === 0 && lost === 0) continue;
-      const tCls = trained === 0 ? 'is-zero' : '';
-      const lCls = lost === 0 ? 'is-zero' : '';
+      const stats = rangeUnitStats(unit, range.startIdx, range.endIdx, t0, t1);
+      if (!stats.relevant) continue;
       const label = escapeHtml(unit.unitLabel || unit.label || '');
       parts.push(
         `<span class="aoe4-inline-summary-entry">` +
           `${label} ` +
-          `<span class="aoe4-army-unit-delta-trained ${tCls}">${trained}</span> ` +
-          `<span class="aoe4-army-unit-delta-lost ${lCls}">${lost}</span>` +
+          `<span class="aoe4-army-unit-delta-trained ${stats.trained === 0 ? 'is-zero' : ''}">${stats.trained}</span> ` +
+          `<span class="aoe4-army-unit-delta-lost ${stats.lost === 0 ? 'is-zero' : ''}">${stats.lost}</span>` +
         `</span>`
       );
     }

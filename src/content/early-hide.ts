@@ -21,7 +21,6 @@
 
   const STYLE_ID = '__aoe4-color-ext-hide';
   const css = `
-    span.rounded-full.w-2.h-2[style*="background"]:not([data-aoe4-recolored]),
     span.rounded-full.w-2.h-2[style*="background"]:not([data-aoe4-recolored]) {
       opacity: 0 !important;
       transition: opacity 0.18s ease-in;
@@ -55,7 +54,6 @@
 
   if (!skipped) {
     injectStyle();
-    setTimeout(removeStyle, 6000);
   }
 
   try {

@@ -171,7 +171,7 @@ export function renderArmyUnitLegendNow(timeline: TimelineElements, chart: Chart
   }
 
   if (chart.type === 'army') {
-    drawTimelineCanvasChart(timeline.canvas, chart);
+    if (!timeline.canvas.__aoe4AnimationToken) drawTimelineCanvasChart(timeline.canvas, chart);
   }
 }
 

@@ -2,15 +2,15 @@ import { normalizeName } from './dom.ts';
 import type { GameSummary, PlayerSummary } from './types.ts';
 
 export const PLAYER_COLORS = [
-  '#4dabf7', '#ff6b6b', '#ffd43b', '#51cf66',
-  '#cc5de8', '#20c997', '#ffa94d', '#748ffc',
-  '#db2777', '#166534',
+  '#0162FF', '#F60000', '#FFEE00', '#4DE94C',
+  '#41D8FF', '#8E00FF', '#FF8C00', '#FF3395',
+  '#C000C0', '#166534',
 ];
 
 export const AOE4_PLAYER_COLOR_HEX = [
-  '#3b82f6', '#ef4444', '#fbbf24', '#22c55e',
-  '#06b6d4', '#a855f7', '#fb923c', '#ec4899',
-  '#db2777', '#166534',
+  '#0162FF', '#F60000', '#FFEE00', '#4DE94C',
+  '#41D8FF', '#8E00FF', '#FF8C00', '#FF3395',
+  '#C000C0', '#166534',
 ];
 
 export function validColor(c: unknown): c is number {
@@ -44,7 +44,7 @@ export function parseCssColor(color: string): [number, number, number] {
   const hex = String(color).replace('#', '');
   const parts = hex.length === 3 ? hex.split('').map(value => value + value) : (hex.match(/.{2}/g) || []);
   const parsed = parts.slice(0, 3).map(value => parseInt(value, 16)).filter(Number.isFinite);
-  return parsed.length === 3 ? [parsed[0], parsed[1], parsed[2]] : [77, 171, 247];
+  return parsed.length === 3 ? [parsed[0], parsed[1], parsed[2]] : [1, 98, 255];
 }
 
 export function shadeColor(hex: string, index: number, total: number): string {

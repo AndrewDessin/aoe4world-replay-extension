@@ -26,13 +26,26 @@ chrome.storage.onChanged.addListener((changes: Record<string, chrome.storage.Sto
 });
 
 let lastUrl = '';
+let scanTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleScan(delayMs: number, replacePending = false): void {
+  if (scanTimer) {
+    if (!replacePending) return;
+    clearTimeout(scanTimer);
+  }
+  scanTimer = setTimeout(() => {
+    scanTimer = null;
+    scanForRows();
+  }, delayMs);
+}
+
 const observer = new MutationObserver(() => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    setTimeout(scanForRows, 500);
+    scheduleScan(500, true);
   } else {
-    scanForRows();
+    scheduleScan(0);
   }
 });
 
@@ -42,4 +55,4 @@ observer.observe(document.body || document.documentElement, {
 });
 
 lastUrl = window.location.href;
-settingsReady.then(() => setTimeout(scanForRows, 800));
+settingsReady.then(() => scheduleScan(800));

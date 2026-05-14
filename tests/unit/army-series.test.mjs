@@ -6,6 +6,7 @@ import {
   armyTeamSigns,
   precomputeStackedValues,
 } from '../../src/content/army-series.ts';
+import { pbgidUnitsMap } from '../../src/content/pbgid-map.ts';
 
 
 describe('buildArmySeriesForPlayer', () => {
@@ -63,6 +64,64 @@ describe('buildArmySeriesForPlayer', () => {
     const archerSeries = result.filter(s => s.mergeKey === 'archer');
     assert.equal(archerSeries.length, 1, 'both age variants should merge');
     assert.equal(archerSeries[0].createdTotal, 2);
+  });
+
+  test('uses shared raw entity id to merge unresolved civ variants into canonical unit', () => {
+    const previousAge2 = pbgidUnitsMap.get(9004188);
+    const previousAge3 = pbgidUnitsMap.get(9004189);
+    const previousHorseArcher = pbgidUnitsMap.get(133493);
+    pbgidUnitsMap.set(9004188, {
+      n: 'Mohe Tribesman',
+      k: 'mohe-tribesman',
+      i: 'https://data.aoe4world.com/images/units/mohe-tribesman-2.png',
+    });
+    pbgidUnitsMap.set(9004189, {
+      n: 'Mohe Tribesman',
+      k: 'mohe-tribesman',
+      i: 'https://data.aoe4world.com/images/units/mohe-tribesman-2.png',
+    });
+    pbgidUnitsMap.set(133493, {
+      n: 'Horse Archer',
+      k: 'horse-archer',
+      i: 'https://data.aoe4world.com/images/units/horse-archer-3.png',
+    });
+    try {
+      const player = {
+        name: 'P1',
+        civilization: 'jin_dynasty',
+        civilizationAttrib: 'jin_dynasty',
+        buildOrder: [
+          { id: '11270955', type: 'Unit', icon: 'icons/races/jin/units/horse_archer_2', pbgid: 9003972, finished: [10, 20], destroyed: [] },
+          { id: '11270955', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_2', pbgid: 9004188, finished: [30], destroyed: [] },
+          { id: '11270956', type: 'Unit', icon: 'icons/races/jin/units/horse_archer_3', pbgid: 9003973, finished: [40], destroyed: [70] },
+          { id: '11270956', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_3', pbgid: 9004189, finished: [50], destroyed: [] },
+          { id: 'unrelated-grassland', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_2', pbgid: 9003972, finished: [55], destroyed: [] },
+          { id: 'unrelated', type: 'Unit', icon: 'icons/races/rus/units/horse_archer_3', pbgid: 133493, finished: [60], destroyed: [] },
+        ],
+      };
+
+      const result = buildArmySeriesForPlayer(player, [0, 20, 40, 60, 80], '#4dabf7');
+      const mohe = result.find(s => s.mergeKey === 'mohe-tribesman');
+      const horseArcher = result.find(s => s.mergeKey === 'horse-archer');
+      const unresolvedGrassland = result.find(s => s.mergeKey === 'horse_archer_grassland');
+
+      assert.ok(mohe, 'Mohe Tribesman series should exist');
+      assert.ok(horseArcher, 'unrelated Horse Archer entity should remain separate');
+      assert.ok(unresolvedGrassland, 'unrelated unresolved grassland Horse Archer entity should remain separate');
+      assert.equal(mohe.label, 'Mohe Tribesman');
+      assert.equal(mohe.createdTotal, 5);
+      assert.deepEqual([...mohe.values], [0, 2, 4, 5, 4]);
+      assert.equal(horseArcher.createdTotal, 1);
+      assert.equal(unresolvedGrassland.createdTotal, 1);
+      assert.equal(mohe.iconCandidates[0], 'https://data.aoe4world.com/images/units/mohe-tribesman-2.png');
+    } finally {
+      if (previousAge2) pbgidUnitsMap.set(9004188, previousAge2);
+      else pbgidUnitsMap.delete(9004188);
+      if (previousAge3) pbgidUnitsMap.set(9004189, previousAge3);
+      else pbgidUnitsMap.delete(9004189);
+      if (previousHorseArcher) pbgidUnitsMap.set(133493, previousHorseArcher);
+      else pbgidUnitsMap.delete(133493);
+    }
   });
 
   test('preserves upgrade timestamps sorted ascending', () => {

@@ -21,6 +21,10 @@ export function attachTimelineHoverGuard(timeline: TimelineElements, chart: Char
     const activeValue = timeline.select.__aoe4SummaryActiveValue;
     if (!activeValue || !activeValue.startsWith('aoe4plus:')) return;
     timeline.heading.textContent = chart.title;
+    // If a chart animation is in progress, let it finish — calling
+    // drawTimelineCanvasChart() here without preserveAnimation:true would
+    // invoke cancelTimelineCanvasAnimation() and kill the RAF loop.
+    if (timeline.canvas.__aoe4AnimationToken) return;
     drawTimelineCanvasChart(timeline.canvas, chart);
   };
   const guardHover = (event: Event): void => {

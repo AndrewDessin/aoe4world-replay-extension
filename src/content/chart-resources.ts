@@ -1,7 +1,6 @@
 import { titleCase } from './canvas-geom.ts';
 import { playerColor } from './colors.ts';
 import {
-  RESOURCE_KEYS,
   RESOURCE_LABELS,
   RESOURCE_SAMPLE_SECONDS,
   SUMMARY_PLUS_PREFIX,
@@ -17,12 +16,71 @@ import type {
   ResourceKey,
 } from './types.ts';
 
-const oliveoilWarnedGames = new Set<string>();
-
 type ResourcePoint = {
   time: number;
   value: number;
 };
+
+type ResourceDescriptor = {
+  key: ResourceKey;
+  label: string;
+  totalLabel: string;
+  appliesToPlayer?: (player: PlayerSummary) => boolean;
+  stockpileKeys: string[];
+  gatheredKeys: string[];
+};
+
+const BASE_RESOURCE_DESCRIPTORS: ResourceDescriptor[] = [
+  { key: 'food', label: 'Food', totalLabel: 'food', stockpileKeys: ['food'], gatheredKeys: ['foodGathered'] },
+  { key: 'wood', label: 'Wood', totalLabel: 'wood', stockpileKeys: ['wood'], gatheredKeys: ['woodGathered'] },
+  { key: 'gold', label: 'Gold', totalLabel: 'gold', stockpileKeys: ['gold'], gatheredKeys: ['goldGathered'] },
+  { key: 'stone', label: 'Stone', totalLabel: 'stone', stockpileKeys: ['stone'], gatheredKeys: ['stoneGathered'] },
+];
+
+const SPECIAL_RESOURCE_DESCRIPTORS: ResourceDescriptor[] = [
+  {
+    key: 'oliveoil',
+    label: 'Olive Oil',
+    totalLabel: 'olive oil',
+    appliesToPlayer: isByzantineOliveOilPlayer,
+    stockpileKeys: ['oliveoil'],
+    gatheredKeys: ['oliveoilGathered'],
+  },
+  {
+    key: 'silver',
+    label: 'Silver',
+    totalLabel: 'silver',
+    appliesToPlayer: isMacedonianSilverPlayer,
+    // aoe4world currently stores Macedonian silver totals in the historical
+    // oliveoil bucket, so accept both the future semantic key and today's alias.
+    stockpileKeys: ['silver', 'oliveoil'],
+    gatheredKeys: ['silverGathered', 'oliveoilGathered'],
+  },
+];
+
+function civSlug(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isMacedonianSilverPlayer(player: PlayerSummary): boolean {
+  const civ = civSlug(player.civilization);
+  const attrib = civSlug(player.civilizationAttrib);
+  return civ.includes('macedonian') || attrib.includes('macedonian') || attrib === 'byzantine_ha_mac';
+}
+
+function isByzantineOliveOilPlayer(player: PlayerSummary): boolean {
+  if (isMacedonianSilverPlayer(player)) return false;
+  const civ = civSlug(player.civilization);
+  const attrib = civSlug(player.civilizationAttrib);
+  return civ.includes('byzant') || attrib.includes('byzant');
+}
+
+function resourceDescriptorsForPlayer(player: PlayerSummary): ResourceDescriptor[] {
+  return [
+    ...BASE_RESOURCE_DESCRIPTORS,
+    ...SPECIAL_RESOURCE_DESCRIPTORS.filter(descriptor => !descriptor.appliesToPlayer || descriptor.appliesToPlayer(player)),
+  ];
+}
 
 export function firstResourceLabels(players: PlayerSummary[]): number[] {
   for (const player of players) {
@@ -88,11 +146,20 @@ function segmentedCumulativeAt(points: ResourcePoint[], time: number): number {
   return points[points.length - 1].value;
 }
 
-function resourceRunningTotalValues(resources: PlayerResources | undefined, resource: ResourceKey, labels: number[]): number[] {
+function firstNumericResourceArray(resources: PlayerResources | undefined, keys: string[]): number[] {
+  if (!resources) return [];
+  for (const key of keys) {
+    const values = numericArray(resources[key]);
+    if (values.length) return values;
+  }
+  return [];
+}
+
+function resourceRunningTotalValues(resources: PlayerResources | undefined, descriptor: ResourceDescriptor, labels: number[]): number[] {
   const timestamps = numericArray(resources?.timestamps);
   // aoe4world's gathered series behaves like cumulative spent.
-  const spent = numericArray(resources?.[`${resource}Gathered`]);
-  const stockpile = numericArray(resources?.[resource]);
+  const spent = firstNumericResourceArray(resources, descriptor.gatheredKeys);
+  const stockpile = firstNumericResourceArray(resources, descriptor.stockpileKeys);
   if (!timestamps.length || (!spent.length && !stockpile.length) || !labels.length) {
     return labels.map(() => 0);
   }
@@ -109,26 +176,14 @@ function resourceRunningTotalValues(resources: PlayerResources | undefined, reso
   return labels.map((time: number) => segmentedCumulativeAt(changePoints, time));
 }
 
-export function buildResourceGatheredCharts(summary: GameSummary, nativeColors: Map<string, string>, gameIdForWarn = ''): Chart[] {
+function resourceValuesForDescriptor(player: PlayerSummary, descriptor: ResourceDescriptor, labels: number[]): number[] {
+  return resourceRunningTotalValues(player.resources, descriptor, labels);
+}
+
+export function buildResourceGatheredCharts(summary: GameSummary, nativeColors: Map<string, string>): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
   const labels = resourceSampleLabels(players, summary.duration || 0);
   if (!labels.length) return [];
-
-  const warnKey = gameIdForWarn || '__no_game__';
-  if (!oliveoilWarnedGames.has(warnKey)) {
-    for (const p of players) {
-      const tg = (p?.totalResourcesGathered) || {};
-      const r = (p?.resources) || {};
-      if ((Number(tg.oliveoil) || 0) > 0 && !Array.isArray(r.oliveoilGathered) && !Array.isArray(r.oliveoil)) {
-        console.warn(
-          `[aoe4plus] Player has totalResourcesGathered.oliveoil > 0 but no oliveoil time-series found — chart will not render. Field-name shape may differ.`,
-          { player: p.name, oliveoilTotal: tg.oliveoil, resourceKeys: Object.keys(r) }
-        );
-        oliveoilWarnedGames.add(warnKey);
-        break;
-      }
-    }
-  }
 
   const charts: Chart[] = [];
   const totalSeries: ChartSeries[] = players.map((player: PlayerSummary, index: number): ChartSeries => ({
@@ -136,8 +191,8 @@ export function buildResourceGatheredCharts(summary: GameSummary, nativeColors: 
     playerName: player.name || `Player ${index + 1}`,
     key: `resources:total:${player.profileId || index}`,
     color: playerColor(summary, player, index, nativeColors),
-    values: (RESOURCE_KEYS as ResourceKey[])
-      .map((resource: ResourceKey) => resourceRunningTotalValues(player.resources, resource, labels))
+    values: resourceDescriptorsForPlayer(player)
+      .map((descriptor: ResourceDescriptor) => resourceValuesForDescriptor(player, descriptor, labels))
       .reduce((totals: number[], values: number[]) => totals.map((total: number, valueIndex: number) => total + (values[valueIndex] || 0)), labels.map(() => 0))
   })).filter((series: ChartSeries) => maxAbs(series.values) > 0);
 
@@ -145,27 +200,40 @@ export function buildResourceGatheredCharts(summary: GameSummary, nativeColors: 
     charts.push({
       value: `${SUMMARY_PLUS_PREFIX}resources-gathered-total`,
       title: 'Resources Gathered: Total',
-      meta: 'Running total of all resources gathered (food, wood, gold, stone, plus olive oil for Byzantines).',
+      meta: 'Running total of resources gathered from aoe4world time-series data (food, wood, gold, stone, plus civilization-specific resources when present).',
       data: { labels, series: totalSeries },
       type: 'line',
       options: { height: 280 }
     });
   }
 
-  for (const resource of RESOURCE_KEYS as ResourceKey[]) {
-    const series: ChartSeries[] = players.map((player: PlayerSummary, index: number): ChartSeries => ({
-      label: player.name || `Player ${index + 1}`,
-      playerName: player.name || `Player ${index + 1}`,
-      key: `resources:${resource}:${player.profileId || index}`,
-      color: playerColor(summary, player, index, nativeColors),
-      values: resourceRunningTotalValues(player.resources, resource, labels)
-    })).filter((item: ChartSeries) => maxAbs(item.values) > 0);
+  const chartDescriptors = [
+    ...BASE_RESOURCE_DESCRIPTORS,
+    ...SPECIAL_RESOURCE_DESCRIPTORS,
+  ];
+
+  for (const descriptor of chartDescriptors) {
+    const series: ChartSeries[] = players.map((player: PlayerSummary, index: number): ChartSeries => {
+      let values: number[];
+      if (descriptor.appliesToPlayer && !descriptor.appliesToPlayer(player)) {
+        values = labels.map(() => 0);
+      } else {
+        values = resourceValuesForDescriptor(player, descriptor, labels);
+      }
+      return {
+        label: player.name || `Player ${index + 1}`,
+        playerName: player.name || `Player ${index + 1}`,
+        key: `resources:${descriptor.key}:${player.profileId || index}`,
+        color: playerColor(summary, player, index, nativeColors),
+        values,
+      };
+    }).filter((item: ChartSeries) => maxAbs(item.values) > 0);
     if (series.length) {
-      const label = RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS] || titleCase(resource);
+      const label = RESOURCE_LABELS[descriptor.key as keyof typeof RESOURCE_LABELS] || descriptor.label || titleCase(descriptor.key);
       charts.push({
-        value: `${SUMMARY_PLUS_PREFIX}resources-gathered-${resource}`,
+        value: `${SUMMARY_PLUS_PREFIX}resources-gathered-${descriptor.key}`,
         title: `Resources Gathered: ${label}`,
-        meta: `Running total of ${label.toLowerCase()} gathered.`,
+        meta: `Running total of ${descriptor.totalLabel || label.toLowerCase()} gathered.`,
         data: { labels, series },
         type: 'line',
         options: { height: 240 }

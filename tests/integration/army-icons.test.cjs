@@ -4,10 +4,11 @@
  * Regression for: icons failing to draw until mouseout-of-legend or unit-highlight
  * fires a direct drawTimelineCanvasChart call.
  *
- * Strategy: spy on CanvasRenderingContext2D.prototype.drawImage globally so we can
- * count icon draws that happen on the aoe4 summary canvas.  drawImage is ONLY used
- * for area icons (all other chart drawing uses fill/stroke primitives), so any
- * drawImage call on the summary canvas means at least one icon was rendered.
+ * Strategy: compare canvas pixel signatures before and after a simulated hover.
+ * The old bug only drew icons after that hover-triggered redraw, so the signature
+ * changed. Fixed behavior has already drawn icons, so the signature is stable.
+ * The test also checks the injected legend unit icons before any hover, proving
+ * icons actually rendered rather than merely checking a stable canvas.
  */
 
 'use strict';
@@ -61,6 +62,59 @@ function assert(condition, msg) {
   if (!condition) throw new Error(msg || 'assertion failed');
 }
 
+async function canvasSignature() {
+  return page.evaluate(() => {
+    const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
+    if (!c) return null;
+    const data = c.toDataURL();
+    let hash = 2166136261;
+    for (let i = 0; i < data.length; i++) {
+      hash ^= data.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return { length: data.length, hash: hash.toString(16) };
+  });
+}
+
+async function selectArmyComposition() {
+  return page.evaluate(() => {
+    const select = document.querySelector('select');
+    const armyOpt = [...(select?.querySelectorAll('option') || [])].find(
+      o => o.value && o.value.includes('army-composition')
+    );
+    if (!armyOpt || !select) return false;
+    select.value = armyOpt.value;
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  });
+}
+
+async function armyLegendIconState() {
+  return page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.aoe4-army-unit-row')];
+    const images = rows.flatMap(row => [...row.querySelectorAll('img.aoe4-army-unit-icon')]);
+    const placeholders = rows.flatMap(row => [...row.querySelectorAll('.aoe4-army-unit-icon-placeholder')]);
+    return {
+      rows: rows.length,
+      images: images.length,
+      loadedImages: images.filter(img => img.complete && img.naturalWidth > 0).length,
+      placeholders: placeholders.length,
+    };
+  });
+}
+
+async function triggerTimelineHoverGuard() {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+    const root = canvas?.closest('[data-aoe4-summary-plus-url]');
+    const target = root?.querySelector('h3') || root;
+    if (!target) return false;
+    target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
+    return true;
+  });
+}
+
 (async () => {
   console.log('\n=== Army Composition Icon Auto-Load ===');
   await setup();
@@ -74,30 +128,15 @@ function assert(condition, msg) {
     const og = document.querySelector('optgroup[data-aoe4-summary-plus]');
     return og ? og.querySelectorAll('option').length : 0;
   });
-  if (chartCount === 0) {
-    console.log('  (skipped — no custom chart options found; extension may not have loaded)');
-    await teardown();
-    console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
-    process.exit(failed > 0 ? 1 : 0);
-  }
+  assert(chartCount > 0, 'no custom chart options found; extension may not have loaded');
 
-  await test('army composition area icons appear without mouse interaction', async () => {
+  await test('army composition legend icons appear without mouse interaction', async () => {
     // Park the mouse in a neutral corner before anything else so no hover events fire.
     await page.mouse.move(0, 0);
     await page.waitForTimeout(200);
 
-    // Switch to army composition
-    const switched = await page.evaluate(() => {
-      const select = document.querySelector('select');
-      const armyOpt = [...(select?.querySelectorAll('option') || [])].find(
-        o => o.value && o.value.includes('army-composition')
-      );
-      if (!armyOpt || !select) return false;
-      select.value = armyOpt.value;
-      select.dispatchEvent(new Event('input', { bubbles: true }));
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    });
+    // Switch to army composition.
+    const switched = await selectArmyComposition();
     assert(switched, 'could not find / select army-composition option');
 
     // Do NOT move the mouse or interact with the page at all.
@@ -110,57 +149,42 @@ function assert(condition, msg) {
     });
     assert(canvasPresent, 'aoe4 summary canvas not found in DOM after 5 s');
 
+    const iconStateBeforeMouse = await armyLegendIconState();
+    assert(iconStateBeforeMouse.rows > 0, 'expected injected army unit legend rows');
+    assert(iconStateBeforeMouse.images > 0, `expected legend unit icon images, got ${JSON.stringify(iconStateBeforeMouse)}`);
+    assert(
+      iconStateBeforeMouse.placeholders === 0,
+      `legend still has unit icon placeholders before mouse interaction: ${JSON.stringify(iconStateBeforeMouse)}`
+    );
+    assert(
+      iconStateBeforeMouse.loadedImages === iconStateBeforeMouse.images,
+      `not all legend unit icons finished loading before mouse interaction: ${JSON.stringify(iconStateBeforeMouse)}`
+    );
+
     // Capture canvas pixel signature BEFORE any mouse interaction.
-    const sigBeforeMouse = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      if (!c) return null;
-      const data = c.toDataURL();
-      let hash = 2166136261;
-      for (let i = 0; i < data.length; i++) {
-        hash ^= data.charCodeAt(i);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-      return { length: data.length, hash: hash.toString(16) };
-    });
+    const sigBeforeMouse = await canvasSignature();
     assert(sigBeforeMouse !== null, 'could not read summary canvas toDataURL before mouse move');
 
-    // Now simulate a hover interaction on the timeline area (but not directly on the
-    // canvas — the hover guard skips events whose target IS the canvas).  Moving to just
-    // above the canvas suffices to fire mouseover on the timeline root.
-    const canvasBox = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      const r = c?.getBoundingClientRect();
-      return r ? { x: r.left + r.width / 2, y: r.top - 10 } : null;
-    });
-    if (canvasBox && canvasBox.y > 0) {
-      await page.mouse.move(canvasBox.x, canvasBox.y);
-    } else {
-      // Fallback: dispatch synthetic mouseover on a player row inside the timeline root.
-      await page.evaluate(() => {
-        const row = document.querySelector('.flex.items-center.cursor-pointer');
-        if (row) row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-      });
-    }
+    // Trigger the hover guard from the timeline heading/root, not a player row,
+    // so this checks redraw stability without legend highlight side effects.
+    assert(await triggerTimelineHoverGuard(), 'could not trigger timeline hover guard');
     await page.waitForTimeout(500);
 
     // Capture canvas pixel signature AFTER mouse interaction.
-    const sigAfterMouse = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      if (!c) return null;
-      const data = c.toDataURL();
-      let hash = 2166136261;
-      for (let i = 0; i < data.length; i++) {
-        hash ^= data.charCodeAt(i);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-      return { length: data.length, hash: hash.toString(16) };
-    });
+    const sigAfterMouse = await canvasSignature();
+    const iconStateAfterMouse = await armyLegendIconState();
 
     const sigStr = (s) => s ? `${s.length}:${s.hash}` : 'null';
+    console.log(`    legend icons before mouse: ${JSON.stringify(iconStateBeforeMouse)}`);
+    console.log(`    legend icons after mouse:  ${JSON.stringify(iconStateAfterMouse)}`);
     console.log(`    before-mouse: ${sigStr(sigBeforeMouse)}`);
     console.log(`    after-mouse:  ${sigStr(sigAfterMouse)}`);
+    assert(
+      iconStateAfterMouse.placeholders === 0 && iconStateAfterMouse.images === iconStateBeforeMouse.images,
+      `legend icon state changed after hover: before=${JSON.stringify(iconStateBeforeMouse)}, after=${JSON.stringify(iconStateAfterMouse)}`
+    );
 
-    // KEY assertion: if area icons were NOT yet drawn when we moved the mouse, the hover
+    // KEY assertion: if the chart were waiting for hover-driven redraw work, the hover
     // guard's drawTimelineCanvasChart call would add them, making the canvas DIFFERENT.
     // If icons were already drawn (the fixed behaviour), the canvas is UNCHANGED by hover.
     assert(
@@ -185,74 +209,23 @@ function assert(condition, msg) {
     });
     await page.waitForTimeout(1000);
 
-    await page.evaluate(() => {
-      const select = document.querySelector('select');
-      const armyOpt = [...(select?.querySelectorAll('option') || [])].find(
-        o => o.value && o.value.includes('army-composition')
-      );
-      if (!armyOpt || !select) return;
-      select.value = armyOpt.value;
-      select.dispatchEvent(new Event('input', { bubbles: true }));
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    assert(await selectArmyComposition(), 'could not re-select army-composition option');
 
     // Wait long enough for icons to load and the retry mechanism to draw them.
     await page.waitForTimeout(3000);
 
-    const sigA = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      if (!c) return null;
-      const data = c.toDataURL();
-      let hash = 2166136261;
-      for (let i = 0; i < data.length; i++) {
-        hash ^= data.charCodeAt(i);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-      return { length: data.length, hash: hash.toString(16) };
-    });
+    const sigA = await canvasSignature();
 
     // Wait a further 4 s (no mouse), then sample again.
     await page.waitForTimeout(4000);
 
-    const sigB = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      if (!c) return null;
-      const data = c.toDataURL();
-      let hash = 2166136261;
-      for (let i = 0; i < data.length; i++) {
-        hash ^= data.charCodeAt(i);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-      return { length: data.length, hash: hash.toString(16) };
-    });
+    const sigB = await canvasSignature();
 
     // Trigger hover and sample again.
-    const canvasBox = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      const r = c?.getBoundingClientRect();
-      return r ? { x: r.left + r.width / 2, y: r.top - 10 } : null;
-    });
-    if (canvasBox && canvasBox.y > 0) {
-      await page.mouse.move(canvasBox.x, canvasBox.y);
-    } else {
-      await page.evaluate(() => {
-        const row = document.querySelector('.flex.items-center.cursor-pointer');
-        if (row) row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-      });
-    }
+    assert(await triggerTimelineHoverGuard(), 'could not trigger timeline hover guard');
     await page.waitForTimeout(500);
 
-    const sigC = await page.evaluate(() => {
-      const c = document.querySelector('canvas[data-aoe4-summary-canvas]');
-      if (!c) return null;
-      const data = c.toDataURL();
-      let hash = 2166136261;
-      for (let i = 0; i < data.length; i++) {
-        hash ^= data.charCodeAt(i);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-      return { length: data.length, hash: hash.toString(16) };
-    });
+    const sigC = await canvasSignature();
 
     const sigStr = (s) => s ? `${s.length}:${s.hash}` : 'null';
     console.log(`    at-3s:         ${sigStr(sigA)}`);

@@ -22,6 +22,97 @@ function isStackedYCache(value: Float32Array | StackedYCache | undefined): value
   return Boolean(value) && !(value instanceof Float32Array);
 }
 
+type RgbColor = { r: number; g: number; b: number };
+
+const TOOLTIP_BG: RgbColor = { r: 7, g: 12, b: 23 };
+const TOOLTIP_ACCENT_FALLBACK = '#86EFAC';
+const TOOLTIP_ACCENT_MIN_CONTRAST = 4.5;
+
+function parseHexRgb(value: string | null | undefined): RgbColor | null {
+  if (!value) return null;
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(value).trim());
+  if (!match) return null;
+  let hex = match[1];
+  if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('');
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex({ r, g, b }: RgbColor): string {
+  return `#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+function relativeLuminance({ r, g, b }: RgbColor): number {
+  const channel = (value: number): number => {
+    const srgb = value / 255;
+    return srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(a: RgbColor, b: RgbColor): number {
+  const l1 = relativeLuminance(a);
+  const l2 = relativeLuminance(b);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function mixRgb(a: RgbColor, b: RgbColor, amount: number): RgbColor {
+  return {
+    r: a.r + (b.r - a.r) * amount,
+    g: a.g + (b.g - a.g) * amount,
+    b: a.b + (b.b - a.b) * amount,
+  };
+}
+
+export function readableTooltipAccentColor(color: string | null | undefined): string {
+  const parsed = parseHexRgb(color) || parseHexRgb(TOOLTIP_ACCENT_FALLBACK);
+  if (!parsed) return TOOLTIP_ACCENT_FALLBACK;
+  if (contrastRatio(parsed, TOOLTIP_BG) >= TOOLTIP_ACCENT_MIN_CONTRAST) return rgbToHex(parsed);
+  for (let amount = 0.15; amount <= 0.85; amount += 0.1) {
+    const mixed = mixRgb(parsed, { r: 255, g: 255, b: 255 }, amount);
+    if (contrastRatio(mixed, TOOLTIP_BG) >= TOOLTIP_ACCENT_MIN_CONTRAST) return rgbToHex(mixed);
+  }
+  return '#E2E8F0';
+}
+
+export function appendUpgradeTooltipLabel(
+  tooltip: HTMLElement,
+  playerName: string | null | undefined,
+  upgradeName: string,
+  color: string | null | undefined,
+  includePlayer: boolean,
+): HTMLElement {
+  const upgLabel = document.createElement('div');
+  upgLabel.className = 'aoe4-summary-tooltip-upgrade';
+  upgLabel.style.setProperty('--aoe4-upgrade-accent', readableTooltipAccentColor(color));
+
+  const marker = document.createElement('span');
+  marker.className = 'aoe4-summary-tooltip-upgrade-marker';
+  marker.textContent = '⬆';
+  upgLabel.appendChild(marker);
+
+  const text = document.createElement('span');
+  text.className = 'aoe4-summary-tooltip-upgrade-text';
+  if (includePlayer && playerName) {
+    const player = document.createElement('span');
+    player.className = 'aoe4-summary-tooltip-upgrade-player';
+    player.textContent = playerName;
+    text.append(player, document.createTextNode(': '));
+  }
+  const name = document.createElement('span');
+  name.className = 'aoe4-summary-tooltip-upgrade-name';
+  name.textContent = upgradeName;
+  text.appendChild(name);
+  upgLabel.appendChild(text);
+  tooltip.appendChild(upgLabel);
+  return upgLabel;
+}
+
 export function updateCanvasTooltip(
   tooltip: TooltipElement,
   canvas: HTMLCanvasElement,
@@ -194,13 +285,8 @@ export function updateArmyMiniTooltip(
     }
     candidates.sort((a, b) => a.dist - b.dist);
     for (const { s, u } of candidates) {
-      const upgLabel = document.createElement('div');
-      upgLabel.style.cssText = `font-size:0.68rem;color:${s.color || '#86efac'};margin-top:0.15rem;`;
       const needPlayerPrefix = s.playerName && s.playerName !== closestPlayer;
-      upgLabel.textContent = needPlayerPrefix
-        ? `⬆ ${s.playerName}: ${u.name}`
-        : `⬆ ${u.name}`;
-      tooltip.appendChild(upgLabel);
+      appendUpgradeTooltipLabel(tooltip, s.playerName, u.name, s.color, Boolean(needPlayerPrefix));
     }
   }
 

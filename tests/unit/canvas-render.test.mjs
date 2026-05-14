@@ -1,9 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { parseHTML } from 'linkedom';
 
 globalThis.window = globalThis.window || { devicePixelRatio: 1 };
 
-import { drawTimelineCanvasChart } from '../../src/content/canvas-render.ts';
+import {
+  animateTimelineCanvasChart,
+  drawTimelineCanvasChart,
+} from '../../src/content/canvas-render.ts';
 
 function makeCtx() {
   const calls = [];
@@ -243,6 +247,216 @@ describe('drawTimelineCanvasChart', () => {
       const draws = canvas._ctx._calls.filter(c => c.m === 'drawImage');
       assert.equal(draws.length, 0);
     });
+
+    it('redraws when army area icon URL and image finish loading', async () => {
+      const oldDocument = globalThis.document;
+      const oldImage = globalThis.Image;
+      const oldRaf = globalThis.requestAnimationFrame;
+      const oldCancel = globalThis.cancelAnimationFrame;
+      const { document } = parseHTML('<html><body></body></html>');
+      const rafQueue = [];
+
+      class FakeImage {
+        constructor() {
+          this.onload = null;
+          this.onerror = null;
+          this.crossOrigin = '';
+        }
+        set src(value) {
+          this._src = value;
+          setTimeout(() => this.onload?.(), 0);
+        }
+        get src() { return this._src; }
+      }
+
+      try {
+        globalThis.document = document;
+        globalThis.Image = FakeImage;
+        globalThis.requestAnimationFrame = (callback) => {
+          rafQueue.push(callback);
+          return rafQueue.length;
+        };
+        globalThis.cancelAnimationFrame = () => {};
+
+        const canvas = makeCanvas();
+        canvas.isConnected = true;
+        const s1 = armySeriesItem('unit-redraw-callback', {
+          playerName: 'Alice',
+          iconCandidates: ['https://example.com/good-redraw-callback.png'],
+          stackBase: new Array(SAMPLE_COUNT).fill(0),
+          stackTop: Array.from({ length: SAMPLE_COUNT }, (_, i) => 80 + i * 2),
+        });
+        s1.iconCandidates = ['https://example.com/good-redraw-callback.png'];
+        const chart = makeChart('army', [s1]);
+
+        drawTimelineCanvasChart(canvas, chart);
+        assert.equal(canvas._ctx._calls.filter(c => c.m === 'drawImage').length, 0);
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.ok(rafQueue.length >= 1, 'icon URL resolution should schedule redraw');
+        rafQueue.shift()(performance.now());
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.ok(rafQueue.length >= 1, 'area image load should schedule redraw');
+        rafQueue.shift()(performance.now());
+
+        assert.ok(canvas._ctx._calls.filter(c => c.m === 'drawImage').length >= 1, 'expected redraw to paint loaded icon');
+      } finally {
+        if (oldDocument === undefined) delete globalThis.document;
+        else globalThis.document = oldDocument;
+        if (oldImage === undefined) delete globalThis.Image;
+        else globalThis.Image = oldImage;
+        if (oldRaf === undefined) delete globalThis.requestAnimationFrame;
+        else globalThis.requestAnimationFrame = oldRaf;
+        if (oldCancel === undefined) delete globalThis.cancelAnimationFrame;
+        else globalThis.cancelAnimationFrame = oldCancel;
+      }
+    });
+
+    it('retries army area icon redraws while the canvas is temporarily disconnected', async () => {
+      const oldDocument = globalThis.document;
+      const oldImage = globalThis.Image;
+      const oldRaf = globalThis.requestAnimationFrame;
+      const oldCancel = globalThis.cancelAnimationFrame;
+      const { document } = parseHTML('<html><body></body></html>');
+      const rafQueue = [];
+
+      class FakeImage {
+        constructor() {
+          this.onload = null;
+          this.onerror = null;
+          this.crossOrigin = '';
+        }
+        set src(value) {
+          this._src = value;
+          setTimeout(() => this.onload?.(), 0);
+        }
+        get src() { return this._src; }
+      }
+
+      try {
+        globalThis.document = document;
+        globalThis.Image = FakeImage;
+        globalThis.requestAnimationFrame = (callback) => {
+          rafQueue.push(callback);
+          return rafQueue.length;
+        };
+        globalThis.cancelAnimationFrame = () => {};
+
+        const canvas = makeCanvas();
+        canvas.isConnected = false;
+        const series = armySeriesItem('unit-disconnect-retry', {
+          playerName: 'Alice',
+          iconCandidates: ['https://example.com/good-disconnect-retry.png'],
+          stackBase: new Array(SAMPLE_COUNT).fill(0),
+          stackTop: Array.from({ length: SAMPLE_COUNT }, (_, i) => 80 + i * 2),
+        });
+        series.iconCandidates = ['https://example.com/good-disconnect-retry.png'];
+        const chart = makeChart('army', [series]);
+
+        drawTimelineCanvasChart(canvas, chart);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.ok(rafQueue.length >= 1, 'icon URL resolution should schedule redraw');
+
+        rafQueue.shift()(performance.now());
+        assert.equal(canvas._ctx._calls.filter(c => c.m === 'drawImage').length, 0);
+        assert.ok(rafQueue.length >= 1, 'disconnected canvas should schedule a retry');
+
+        canvas.isConnected = true;
+        rafQueue.shift()(performance.now());
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.ok(rafQueue.length >= 1, 'area image load should schedule final redraw');
+
+        rafQueue.shift()(performance.now());
+        assert.ok(canvas._ctx._calls.filter(c => c.m === 'drawImage').length >= 1, 'expected retry to paint loaded icon after reconnect');
+      } finally {
+        if (oldDocument === undefined) delete globalThis.document;
+        else globalThis.document = oldDocument;
+        if (oldImage === undefined) delete globalThis.Image;
+        else globalThis.Image = oldImage;
+        if (oldRaf === undefined) delete globalThis.requestAnimationFrame;
+        else globalThis.requestAnimationFrame = oldRaf;
+        if (oldCancel === undefined) delete globalThis.cancelAnimationFrame;
+        else globalThis.cancelAnimationFrame = oldCancel;
+      }
+    });
+
+    it('does not repaint a replacement canvas with a stale army chart', async () => {
+      const oldDocument = globalThis.document;
+      const oldImage = globalThis.Image;
+      const oldRaf = globalThis.requestAnimationFrame;
+      const oldCancel = globalThis.cancelAnimationFrame;
+      const { document } = parseHTML('<html><body></body></html>');
+      const rafQueue = [];
+
+      class FakeImage {
+        constructor() {
+          this.onload = null;
+          this.onerror = null;
+          this.crossOrigin = '';
+        }
+        set src(value) {
+          this._src = value;
+          setTimeout(() => this.onload?.(), 0);
+        }
+        get src() { return this._src; }
+      }
+
+      try {
+        globalThis.document = document;
+        globalThis.Image = FakeImage;
+        globalThis.requestAnimationFrame = (callback) => {
+          rafQueue.push(callback);
+          return rafQueue.length;
+        };
+        globalThis.cancelAnimationFrame = () => {};
+
+        const oldCanvas = makeCanvas();
+        oldCanvas.isConnected = false;
+        const replacementCanvas = document.createElement('canvas');
+        const replacementCtx = makeCtx();
+        Object.defineProperty(replacementCanvas, 'getContext', { value: () => replacementCtx });
+        Object.defineProperty(replacementCanvas, 'getBoundingClientRect', {
+          value: () => ({ left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500 }),
+        });
+        Object.defineProperty(replacementCanvas, 'clientWidth', { value: 1000 });
+        Object.defineProperty(replacementCanvas, 'clientHeight', { value: 500 });
+        replacementCanvas.width = 1000;
+        replacementCanvas.height = 500;
+        replacementCanvas._ctx = replacementCtx;
+        replacementCanvas.dataset.aoe4SummaryCanvas = 'true';
+        document.body.appendChild(replacementCanvas);
+
+        const oldSeries = armySeriesItem('unit-stale-redraw', {
+          playerName: 'Alice',
+          iconCandidates: ['https://example.com/good-stale-redraw.png'],
+          stackBase: new Array(SAMPLE_COUNT).fill(0),
+          stackTop: Array.from({ length: SAMPLE_COUNT }, (_, i) => 80 + i * 2),
+        });
+        oldSeries.iconCandidates = ['https://example.com/good-stale-redraw.png'];
+        const oldChart = makeChart('army', [oldSeries]);
+        const newChart = makeChart('workers', [lineSeriesItem('workers', [1, 2, 3])], { value: 'workers', labels: [0, 60, 120] });
+        replacementCanvas.__aoe4ActiveChart = newChart;
+
+        drawTimelineCanvasChart(oldCanvas, oldChart);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.ok(rafQueue.length >= 1, 'icon URL resolution should schedule redraw');
+
+        rafQueue.shift()(performance.now());
+
+        assert.equal(replacementCanvas._ctx._calls.length, 0, 'stale army redraw must not paint replacement canvas');
+        assert.equal(oldCanvas.__aoe4IconRedrawFrame, null);
+      } finally {
+        if (oldDocument === undefined) delete globalThis.document;
+        else globalThis.document = oldDocument;
+        if (oldImage === undefined) delete globalThis.Image;
+        else globalThis.Image = oldImage;
+        if (oldRaf === undefined) delete globalThis.requestAnimationFrame;
+        else globalThis.requestAnimationFrame = oldRaf;
+        if (oldCancel === undefined) delete globalThis.cancelAnimationFrame;
+        else globalThis.cancelAnimationFrame = oldCancel;
+      }
+    });
   });
 
   describe('lead chart', () => {
@@ -311,6 +525,50 @@ describe('drawTimelineCanvasChart', () => {
       canvas.height = 500;
       drawTimelineCanvasChart(canvas, chart);
       assert.equal(canvas.width, 1000);
+    });
+  });
+
+  describe('chart animation', () => {
+    it('clips plotted data to animation progress', () => {
+      const canvas = makeCanvas();
+      const s1 = lineSeriesItem('p1', Array.from({ length: SAMPLE_COUNT }, (_, i) => i * 3));
+      const chart = makeChart('workers', [s1]);
+
+      drawTimelineCanvasChart(canvas, chart, null, { animationProgress: 0.5 });
+
+      const clipRect = canvas._ctx._calls.find(c => c.m === 'rect');
+      assert.ok(clipRect, 'expected plot clip rect');
+      assert.equal(clipRect.args[0], 28);
+      assert.ok(clipRect.args[2] > 450 && clipRect.args[2] < 500, `expected about half plot width, got ${clipRect.args[2]}`);
+    });
+
+    it('animateTimelineCanvasChart starts with a zero-width plot and schedules a frame', () => {
+      const oldRaf = globalThis.requestAnimationFrame;
+      const oldCancel = globalThis.cancelAnimationFrame;
+      const oldMatchMedia = globalThis.window.matchMedia;
+      try {
+        globalThis.requestAnimationFrame = () => 123;
+        globalThis.cancelAnimationFrame = () => {};
+        globalThis.window.matchMedia = () => ({ matches: false });
+        const canvas = makeCanvas();
+        const s1 = lineSeriesItem('p1', Array.from({ length: SAMPLE_COUNT }, (_, i) => i * 3));
+        const chart = makeChart('workers', [s1]);
+
+        animateTimelineCanvasChart(canvas, chart, 750);
+
+        const clipRect = canvas._ctx._calls.find(c => c.m === 'rect');
+        assert.ok(clipRect, 'expected initial plot clip rect');
+        assert.equal(clipRect.args[2], 0);
+        assert.equal(canvas.__aoe4AnimationFrame, 123);
+        assert.ok(canvas.__aoe4AnimationToken);
+      } finally {
+        if (oldRaf === undefined) delete globalThis.requestAnimationFrame;
+        else globalThis.requestAnimationFrame = oldRaf;
+        if (oldCancel === undefined) delete globalThis.cancelAnimationFrame;
+        else globalThis.cancelAnimationFrame = oldCancel;
+        if (oldMatchMedia === undefined) delete globalThis.window.matchMedia;
+        else globalThis.window.matchMedia = oldMatchMedia;
+      }
     });
   });
 

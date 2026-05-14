@@ -23,6 +23,7 @@ type ArmySeriesGroup = {
   destroyed: number[];
   icon: string;
   pbgid?: number;
+  hasCanonicalPbgid?: boolean;
   label: string;
   upgrades: UnitUpgrade[];
   mergeKey: string;
@@ -39,22 +40,73 @@ type FindUnitGroupForUpgrade = (
 const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as FindUnitGroupForUpgrade;
 const collapseChartSeriesTyped = collapseChartSeries as (series: ChartSeries[], limit: number) => ChartSeries[];
 
+function addAliasCandidate(aliases: Map<string, Set<string>>, alias: string, canonical: string): void {
+  if (!alias || !canonical || alias === canonical) return;
+  let bucket = aliases.get(alias);
+  if (!bucket) {
+    bucket = new Set<string>();
+    aliases.set(alias, bucket);
+  }
+  bucket.add(canonical);
+}
+
+function buildUniqueAliasMap(aliases: Map<string, Set<string>>): Map<string, string> {
+  const unique = new Map<string, string>();
+  for (const [alias, canonicals] of aliases) {
+    if (canonicals.size !== 1) continue;
+    const [only] = canonicals;
+    if (only) unique.set(alias, only);
+  }
+  return unique;
+}
+
+function unitEntityId(item: { id?: unknown }): string {
+  const id = item.id == null ? '' : String(item.id).trim();
+  return id && id !== '0' ? id : '';
+}
+
 export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[], baseColor: string): ChartSeries[] {
   const grouped = new Map<string, ArmySeriesGroup>();
-  const legacyToCanonicals = new Map<string, Set<string>>();
+  const legacyToCanonicalsByIcon = new Map<string, Set<string>>();
+  const canonicalKeysByEntityId = new Map<string, Set<string>>();
 
   for (const item of player.buildOrder || []) {
     if (item.type !== 'Unit' || !isArmyUnit(item)) continue;
-    const key = unitMergeKey(item.icon, item.pbgid);
+    const canonicalFromPbgid = resolveUnitByPbgid(item.pbgid)?.k || '';
+    const rawKey = unitMergeKey(item.icon, item.pbgid);
     const legacyKey = unitMergeKey(item.icon, null);
-    if (legacyKey && legacyKey !== key) {
-      let bucket = legacyToCanonicals.get(legacyKey);
-      if (!bucket) {
-        bucket = new Set<string>();
-        legacyToCanonicals.set(legacyKey, bucket);
-      }
-      bucket.add(key);
+    if (legacyKey && legacyKey !== rawKey) {
+      addAliasCandidate(legacyToCanonicalsByIcon, legacyKey, rawKey);
     }
+    const entityId = unitEntityId(item);
+    if (entityId) {
+      if (canonicalFromPbgid) {
+        let canonicalBucket = canonicalKeysByEntityId.get(entityId);
+        if (!canonicalBucket) {
+          canonicalBucket = new Set<string>();
+          canonicalKeysByEntityId.set(entityId, canonicalBucket);
+        }
+        canonicalBucket.add(canonicalFromPbgid);
+      }
+    }
+  }
+
+  const iconAliasToGroup = buildUniqueAliasMap(legacyToCanonicalsByIcon);
+  const canonicalByEntityId = new Map<string, string>();
+  for (const [entityId, canonicals] of canonicalKeysByEntityId) {
+    if (canonicals.size !== 1) continue;
+    const [canonical] = canonicals;
+    if (canonical) canonicalByEntityId.set(entityId, canonical);
+  }
+
+  for (const item of player.buildOrder || []) {
+    if (item.type !== 'Unit' || !isArmyUnit(item)) continue;
+    const rawKey = unitMergeKey(item.icon, item.pbgid);
+    const legacyKey = unitMergeKey(item.icon, null);
+    const entityCanonical = canonicalByEntityId.get(unitEntityId(item));
+    const key = entityCanonical || rawKey;
+    const canonicalPbgidKey = resolveUnitByPbgid(item.pbgid)?.k || '';
+    const hasCanonicalPbgid = Boolean(canonicalPbgidKey && canonicalPbgidKey === key);
 
     let group = grouped.get(key);
     if (!group) {
@@ -63,25 +115,21 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
         destroyed: [],
         icon: item.icon,
         pbgid: item.pbgid,
+        hasCanonicalPbgid,
         label: unitLabelBase(key, item.icon, player, item.pbgid),
         upgrades: [],
         mergeKey: key,
       };
       grouped.set(key, group);
-    } else if (!group.pbgid && item.pbgid) {
+    } else if ((!group.pbgid || (!group.hasCanonicalPbgid && hasCanonicalPbgid)) && item.pbgid) {
       group.pbgid = item.pbgid;
       group.icon = item.icon;
+      group.hasCanonicalPbgid = hasCanonicalPbgid;
+      group.label = unitLabelBase(key, item.icon, player, item.pbgid);
     }
 
     group.finished.push(...numericArray(item.finished), ...numericArray(item.transformed));
     group.destroyed.push(...numericArray(item.destroyed));
-  }
-
-  const iconAliasToGroup = new Map<string, string>();
-  for (const [legacyKey, canonicals] of legacyToCanonicals) {
-    if (canonicals.size !== 1) continue;
-    const [only] = canonicals;
-    if (only) iconAliasToGroup.set(legacyKey, only);
   }
 
   for (const item of player.buildOrder || []) {
@@ -102,9 +150,11 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       existing.finished.push(...group.finished);
       existing.destroyed.push(...group.destroyed);
       existing.upgrades.push(...group.upgrades);
-      if (!existing.pbgid && group.pbgid) {
+      if ((!existing.pbgid || (!existing.hasCanonicalPbgid && group.hasCanonicalPbgid)) && group.pbgid) {
         existing.pbgid = group.pbgid;
         existing.icon = group.icon;
+        existing.hasCanonicalPbgid = group.hasCanonicalPbgid;
+        existing.label = group.label;
       }
     } else {
       byLabel.set(label, group);

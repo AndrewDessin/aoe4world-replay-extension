@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "AoE4 Replay Launcher",
   "version": "1.0",
+  "minimum_chrome_version": "111",
   "description": "Watch any AoE4 replay directly from aoe4world.com. One-click download and launch into Age of Empires IV.",
   "permissions": ["storage", "nativeMessaging"],
   "host_permissions": [
@@ -26,6 +27,12 @@
     },
     {
       "matches": ["https://aoe4world.com/*"],
+      "js": ["chart-injector.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://aoe4world.com/*"],
       "js": ["content.js"],
       "css": ["style.css"]
     }
@@ -37,7 +44,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["chart-injector.js", "data/pbgid-map.json"],
+      "resources": ["data/pbgid-map.json"],
       "matches": ["https://aoe4world.com/*"]
     }
   ]

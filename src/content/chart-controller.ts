@@ -31,7 +31,7 @@ import {
   hideNativeAgeUpOverlay,
   ensureNativeAgeUpOverlayResizeObserver,
 } from './native-timeline.ts';
-import { animateTimelineCanvasChart, cancelTimelineCanvasAnimation } from './canvas-render.ts';
+import { animateTimelineCanvasChart, cancelAreaIconRedraw, cancelTimelineCanvasAnimation } from './canvas-render.ts';
 import {
   renderArmyUnitLegend,
   removeArmyUnitLegend,
@@ -455,6 +455,8 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
   const oldCanvas = timeline.canvas;
   if (!oldCanvas?.parentElement) return oldCanvas;
   cancelTimelineCanvasAnimation(oldCanvas);
+  cancelAreaIconRedraw(oldCanvas);
+  oldCanvas.__aoe4ActiveChart = null;
   detachCanvasTooltip(oldCanvas);
   if (timeline.chartBox?.__aoe4DragAbort) {
     timeline.chartBox.__aoe4DragAbort.abort();

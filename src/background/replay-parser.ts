@@ -71,7 +71,7 @@ export function setDebug(value: boolean): void { DEBUG = !!value; }
 const debugWarn = (...args: unknown[]): void => { if (DEBUG)
     console.warn(...args); };
 export const COLOR_NAMES = ['Blue', 'Red', 'Yellow', 'Green', 'Teal', 'Purple', 'Orange', 'Pink', 'Magenta', 'Dark Green'] as const;
-export const COLOR_HEX = ['#3b82f6', '#ef4444', '#fbbf24', '#22c55e', '#06b6d4', '#a855f7', '#fb923c', '#ec4899', '#db2777', '#166534'] as const;
+export const COLOR_HEX = ['#0162FF', '#F60000', '#FFEE00', '#4DE94C', '#41D8FF', '#8E00FF', '#FF8C00', '#FF3395', '#C000C0', '#166534'] as const;
 const MAX_STRING_LENGTH = 256;
 const FILE_HEADER_SIZE = 0x4C;
 const SECOND_CHUNKY_OFFSET = 0x90;

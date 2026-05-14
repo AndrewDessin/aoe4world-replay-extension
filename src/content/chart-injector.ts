@@ -1,28 +1,25 @@
 (() => {
+  const WINDOW_FLAG = '__aoe4ColorExtInjectorLoaded';
+  type InjectorWindow = Window & { [WINDOW_FLAG]?: boolean };
+  const injectorWindow = window as InjectorWindow;
+  if (injectorWindow[WINDOW_FLAG]) {
+    window.postMessage({ source: 'aoe4-color-ext', type: 'ready' }, '*');
+    return;
+  }
+  injectorWindow[WINDOW_FLAG] = true;
+
+  const COLOR_PROPS = ['borderColor', 'backgroundColor', 'pointBorderColor', 'pointBackgroundColor'] as const;
+  type ColorProp = typeof COLOR_PROPS[number];
+  type DatasetSourceColors = Partial<Record<ColorProp, string>>;
+
   type ChartDataset = {
     label?: string;
     borderColor?: unknown;
-    backgroundColor?: string | ((...args: readonly unknown[]) => unknown);
+    backgroundColor?: unknown;
     pointBorderColor?: unknown;
     pointBackgroundColor?: unknown;
-  };
-
-  type ChartElement = {
-    options?: Record<string, unknown>;
-    $animations?: Record<string, { _to?: unknown; _from?: unknown } | undefined>;
-  };
-
-  type ChartController = {
-    _cachedDataOpts?: Record<string, unknown>;
-    _resolverCache?: Record<string, unknown>;
-  };
-
-  type ChartMeta = {
-    index: number;
-    controller?: ChartController;
-    dataset?: ChartElement;
-    data?: ChartElement[];
-    $animations?: Record<string, unknown>;
+    __aoe4SourceColors?: DatasetSourceColors;
+    __aoe4AppliedColors?: DatasetSourceColors;
   };
 
   type ChartInstance = {
@@ -30,16 +27,12 @@
       datasets?: ChartDataset[];
     };
     update(mode?: string): void;
-    getDatasetMeta?(index: number): ChartMeta;
+    reset?(): void;
+    stop?(): void;
   };
 
   type ChartPrototype = {
     update: (...args: unknown[]) => unknown;
-  };
-
-  type ChartPlugin = {
-    id: string;
-    beforeUpdate?: (chart: ChartInstance) => void;
   };
 
   type ChartLibrary = ((...args: unknown[]) => unknown) & {
@@ -63,14 +56,119 @@
 
   const SOURCE = 'aoe4-color-ext';
   const RECOLOR_ATTR = 'data-aoe4-recolored';
-  const HIDE_STYLE_ID = '__aoe4-color-ext-hide';
+  const EARLY_HIDE_STYLE_ID = '__aoe4-color-ext-hide';
+  const HIDE_STYLE_ID = '__aoe4-color-ext-hide-active';
+  const CHART_GATE_STYLE_ID = '__aoe4-color-ext-chart-gate';
+  const ORIGINAL_STYLE_ATTR = 'data-aoe4-original-style';
+  const RECOLOR_HINT_KEY = '__aoe4-color-ext-recolor-v1';
   let chartLib: ChartLibrary | null = null;
   let colorByName = new Map<string, string>();
-  let disabled = false;
   let patched = false;
   let domObserver: MutationObserver | null = null;
   let pendingRescan: number | null = null;
   const nameKeyFn = (name: unknown): string => String(name || '').trim().toLowerCase();
+
+  function isGameRoute(): boolean {
+    return /\/players\/\d+(?:-[^/]*)?\/games\/\d+/.test(window.location.pathname);
+  }
+
+  function readRecolorHint(): string | null {
+    try { return localStorage.getItem(RECOLOR_HINT_KEY); }
+    catch (_) { return null; }
+  }
+
+  function ensureChartGateStyle(): void {
+    if (!isGameRoute()) return;
+    if (document.getElementById(CHART_GATE_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = CHART_GATE_STYLE_ID;
+    style.textContent = `
+      div:has(select option[value="army"]):has(select option[value="workers"])
+        canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay) {
+        opacity: 0 !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function removeChartGateStyle(): void {
+    const style = document.getElementById(CHART_GATE_STYLE_ID);
+    if (style) style.remove();
+  }
+
+  if (isGameRoute() && readRecolorHint() !== '0') {
+    ensureChartGateStyle();
+  }
+
+  type ParsedHexColor = {
+    base: string;
+    alpha: string;
+  };
+
+  function parseHexColor(value: unknown): ParsedHexColor | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    const match = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(trimmed);
+    if (!match) return null;
+    let hex = match[1];
+    if (hex.length === 3 || hex.length === 4) {
+      hex = hex.split('').map(ch => ch + ch).join('');
+    }
+    const base = `#${hex.slice(0, 6).toUpperCase()}`;
+    const alpha = hex.length === 8 ? hex.slice(6, 8).toUpperCase() : '';
+    return { base, alpha };
+  }
+
+  function recoloredHex(replacement: string, alpha: string): string | null {
+    const parsed = parseHexColor(replacement);
+    if (!parsed) return null;
+    return `${parsed.base}${alpha}`;
+  }
+
+  function recolorDatasetColor(
+    dataset: ChartDataset,
+    prop: ColorProp,
+    replacement: string,
+    replacementBase: string,
+  ): boolean {
+    const parsedCurrent = parseHexColor(dataset[prop]);
+    if (!parsedCurrent) return false;
+
+    if (parsedCurrent.base === replacementBase) return false;
+    const sourceColors = dataset.__aoe4SourceColors ?? (dataset.__aoe4SourceColors = {});
+    const appliedColors = dataset.__aoe4AppliedColors ?? (dataset.__aoe4AppliedColors = {});
+    const sourceBase = sourceColors[prop];
+    const appliedBase = appliedColors[prop];
+    if (!sourceBase) {
+      sourceColors[prop] = parsedCurrent.base;
+    }
+    if (sourceBase && parsedCurrent.base !== sourceBase && parsedCurrent.base !== appliedBase) return false;
+
+    const next = recoloredHex(replacement, parsedCurrent.alpha);
+    if (!next || dataset[prop] === next) return false;
+    dataset[prop] = next;
+    appliedColors[prop] = replacementBase;
+    return true;
+  }
+
+  function restoreDatasetColors(dataset: ChartDataset): boolean {
+    const sourceColors = dataset.__aoe4SourceColors;
+    if (!sourceColors) return false;
+    let changed = false;
+    for (const prop of COLOR_PROPS) {
+      const source = sourceColors[prop];
+      if (!source) continue;
+      const current = parseHexColor(dataset[prop]);
+      const next = current ? `${source}${current.alpha}` : source;
+      if (dataset[prop] !== next) {
+        dataset[prop] = next;
+        changed = true;
+      }
+    }
+    delete dataset.__aoe4SourceColors;
+    delete dataset.__aoe4AppliedColors;
+    return changed;
+  }
 
   function findChartBundleUrl(): string | null {
     const candidates = [
@@ -114,98 +212,78 @@
       if (!key) continue;
       const hex = colorByName.get(key);
       if (!hex) continue;
-      if (ds.borderColor !== hex) { ds.borderColor = hex; changed = true; }
-      if (typeof ds.backgroundColor !== 'function' && ds.backgroundColor !== hex) {
-        ds.backgroundColor = hex; changed = true;
-      }
-      if (ds.pointBorderColor !== undefined && ds.pointBorderColor !== hex) {
-        ds.pointBorderColor = hex; changed = true;
-      }
-      if (ds.pointBackgroundColor !== undefined && ds.pointBackgroundColor !== hex) {
-        ds.pointBackgroundColor = hex; changed = true;
+      const replacement = parseHexColor(hex);
+      if (!replacement) continue;
+      for (const prop of COLOR_PROPS) {
+        if (recolorDatasetColor(ds, prop, hex, replacement.base)) {
+          changed = true;
+        }
       }
     }
     return changed;
   }
 
-  /** Clear Chart.js v4 internal option-resolver caches for a dataset.
-   *  Without this, hover/animation cycles restore stale cached colors. */
-  function resetChartColorCache(chart: ChartInstance, datasetIndex: number): void {
-    if (!chart.getDatasetMeta) return;
-    try {
-      const meta = chart.getDatasetMeta(datasetIndex);
-      if (!meta) return;
-      const ctrl = meta.controller;
-      if (ctrl) {
-        if (ctrl._cachedDataOpts) ctrl._cachedDataOpts = {};
-        if (ctrl._resolverCache) ctrl._resolverCache = {};
-      }
-      // Sync the line element's resolved options to our color
-      const ds = chart.data?.datasets?.[datasetIndex];
-      if (!ds) return;
-      const hex = ds.borderColor;
-      if (meta.dataset?.options) {
-        meta.dataset.options.borderColor = hex;
-        if (typeof ds.backgroundColor !== 'function') {
-          meta.dataset.options.backgroundColor = ds.backgroundColor;
-        }
-      }
-      // Kill any in-flight borderColor animation so it doesn't revert
-      if (meta.dataset?.$animations?.borderColor) {
-        meta.dataset.$animations.borderColor = undefined;
-      }
-      // Sync point elements
-      if (meta.data) {
-        for (const el of meta.data) {
-          if (el.options) {
-            el.options.borderColor = hex;
-            if (typeof ds.backgroundColor !== 'function') {
-              el.options.backgroundColor = ds.backgroundColor;
-            }
-          }
-          if (el.$animations?.borderColor) {
-            el.$animations.borderColor = undefined;
-          }
-        }
-      }
-    } catch (_) { /* defensive – internal API may vary */ }
-  }
-
-  let pluginRegistered = false;
-
-  /** Register a Chart.js plugin that re-applies our colors before every
-   *  update cycle (including hover-triggered ones). This ensures the
-   *  option resolver always picks up our colors, not the cached originals. */
-  function registerRecolorPlugin(Chart: ChartLibrary): void {
-    if (pluginRegistered || !Chart.register) return;
-    pluginRegistered = true;
-
-    const plugin: ChartPlugin = {
-      id: 'aoe4-persistent-recolor',
-      beforeUpdate(chart: ChartInstance): void {
-        if (!colorByName.size) return;
-        applyColorsToChart(chart);
-      },
-    };
-    Chart.register(plugin);
-  }
-
-  const coloredCharts = new WeakSet<ChartInstance>();
   function patchChartPrototype(Chart: ChartLibrary): void {
     if (patched) return;
     patched = true;
-    registerRecolorPlugin(Chart);
 
     const origUpdate = Chart.prototype.update;
     Chart.prototype.update = function patchedUpdate(this: ChartInstance, ...args: unknown[]): unknown {
-      if (colorByName.size && !coloredCharts.has(this)) {
+      if (colorByName.size) {
         applyColorsToChart(this);
-        coloredCharts.add(this);
-        // Render once with 'none' so Chart.js parses our colors as the baseline
-        origUpdate.call(this, 'none');
       }
       return origUpdate.apply(this, args);
     };
+  }
+
+  function updateChartAfterColorChange(chart: ChartInstance, animate: boolean): void {
+    if (typeof chart.stop === 'function') chart.stop();
+    if (animate) {
+      if (typeof chart.reset === 'function') chart.reset();
+      chart.update();
+    } else {
+      chart.update('none');
+    }
+  }
+
+  let chartPatchObserver: MutationObserver | null = null;
+  let chartPatchPromise: Promise<void> | null = null;
+  let chartPatchFailed = false;
+
+  function tryPatchChartLibrary(): void {
+    if (patched || chartPatchPromise || chartPatchFailed) return;
+    if (!findChartBundleUrl()) {
+      if (document.readyState === 'complete') removeChartGateStyle();
+      return;
+    }
+    chartPatchPromise = ensureChartLib()
+      .then((Chart) => {
+        patchChartPrototype(Chart);
+        if (colorByName.size) applyToAllExistingCharts(Chart);
+        removeChartGateStyle();
+        if (chartPatchObserver) {
+          chartPatchObserver.disconnect();
+          chartPatchObserver = null;
+        }
+      })
+      .catch((err: unknown) => {
+        chartPatchFailed = true;
+        if (chartPatchObserver) {
+          chartPatchObserver.disconnect();
+          chartPatchObserver = null;
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        window.postMessage({ source: SOURCE, type: 'error', error: message }, '*');
+        removeChartGateStyle();
+      })
+      .finally(() => { chartPatchPromise = null; });
+  }
+
+  function ensureChartPatchObserver(): void {
+    tryPatchChartLibrary();
+    if (patched || chartPatchFailed || chartPatchObserver) return;
+    chartPatchObserver = new MutationObserver(() => tryPatchChartLibrary());
+    chartPatchObserver.observe(document.head || document.documentElement, { childList: true });
   }
 
   function applyToAllExistingCharts(Chart: ChartLibrary): number {
@@ -213,13 +291,30 @@
     let updated = 0;
     for (const chart of Object.values(Chart.instances)) {
       if (applyColorsToChart(chart)) {
-        coloredCharts.add(chart);
         try {
-          if (typeof chart.stop === 'function') chart.stop();
-          chart.update('none');
+          updateChartAfterColorChange(chart, true);
           updated++;
         } catch (_) {}
       }
+    }
+    return updated;
+  }
+
+  function restoreAllChartColors(): number {
+    if (!chartLib?.instances) return 0;
+    let updated = 0;
+    for (const chart of Object.values(chartLib.instances)) {
+      const datasets = chart.data?.datasets;
+      if (!Array.isArray(datasets)) continue;
+      let changed = false;
+      for (const ds of datasets) {
+        if (restoreDatasetColors(ds)) changed = true;
+      }
+      if (!changed) continue;
+      try {
+        updateChartAfterColorChange(chart, false);
+        updated++;
+      } catch (_) {}
     }
     return updated;
   }
@@ -244,6 +339,20 @@
     return null;
   }
 
+  function rememberOriginalStyle(el: HTMLElement): void {
+    if (!el.hasAttribute(ORIGINAL_STYLE_ATTR)) {
+      el.setAttribute(ORIGINAL_STYLE_ATTR, el.getAttribute('style') || '');
+    }
+  }
+
+  function restoreOriginalStyle(el: HTMLElement): void {
+    const original = el.getAttribute(ORIGINAL_STYLE_ATTR);
+    if (original === null) return;
+    if (original) el.setAttribute('style', original);
+    else el.removeAttribute('style');
+    el.removeAttribute(ORIGINAL_STYLE_ATTR);
+  }
+
   function recolorSpanSwatch(span: HTMLSpanElement): boolean {
     const nameKey = findAdjacentPlayerName(span);
     if (!nameKey) return false;
@@ -253,6 +362,7 @@
       if (!span.hasAttribute(RECOLOR_ATTR)) span.setAttribute(RECOLOR_ATTR, '1');
       return false;
     }
+    rememberOriginalStyle(span);
     span.style.background = hex;
     span.style.backgroundColor = hex;
     span.setAttribute(RECOLOR_ATTR, '1');
@@ -270,6 +380,7 @@
       if (!icon.hasAttribute(RECOLOR_ATTR)) icon.setAttribute(RECOLOR_ATTR, '1');
       return false;
     }
+    rememberOriginalStyle(wrapper);
     wrapper.style.color = hex;
     icon.setAttribute(RECOLOR_ATTR, '1');
     return true;
@@ -317,10 +428,26 @@
     });
   }
 
-  function clearRecoloredAttrs(): void {
-    document.querySelectorAll<HTMLElement>('[' + RECOLOR_ATTR + ']').forEach((el) => {
+  function restoreDomSwatchColors(): void {
+    document.querySelectorAll<HTMLSpanElement>(`span[${RECOLOR_ATTR}]`).forEach((el) => {
+      restoreOriginalStyle(el);
       el.removeAttribute(RECOLOR_ATTR);
     });
+    document.querySelectorAll<HTMLElement>(`i[${RECOLOR_ATTR}]`).forEach((el) => {
+      if (el.parentElement instanceof HTMLElement) restoreOriginalStyle(el.parentElement);
+      el.removeAttribute(RECOLOR_ATTR);
+    });
+    document.querySelectorAll<HTMLElement>(`[${ORIGINAL_STYLE_ATTR}]`).forEach(restoreOriginalStyle);
+  }
+
+  function removeHideStyle(): void {
+    const hideStyle = document.getElementById(HIDE_STYLE_ID);
+    if (hideStyle) hideStyle.remove();
+  }
+
+  function removeEarlyHideStyle(): void {
+    const hideStyle = document.getElementById(EARLY_HIDE_STYLE_ID);
+    if (hideStyle) hideStyle.remove();
   }
 
   function ensureHideStyle(): void {
@@ -346,34 +473,34 @@
   }
 
   async function handleApplyColors(payload: ApplyColorsPayload | null | undefined): Promise<void> {
-    if (disabled) return;
     const map = payload?.colorByName;
     if (!map || typeof map !== 'object') return;
     colorByName = new Map<string, string>(Object.entries(map).map(([k, v]) => [nameKeyFn(k), v]));
     if (!colorByName.size) return;
     ensureHideStyle();
+    removeEarlyHideStyle();
     ensureDomObserver();
     applyDomSwatchColors();
-    try {
-      const Chart = await ensureChartLib();
-      patchChartPrototype(Chart);
-      applyToAllExistingCharts(Chart);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      window.postMessage({ source: SOURCE, type: 'error', error: message }, '*');
+    ensureChartPatchObserver();
+    if (chartLib) {
+      applyToAllExistingCharts(chartLib);
+      removeChartGateStyle();
     }
   }
 
   function handleClearColors(): void {
-    if (disabled) return;
     colorByName = new Map<string, string>();
-    clearRecoloredAttrs();
-    ensureHideStyle();
+    restoreDomSwatchColors();
+    restoreAllChartColors();
+    removeHideStyle();
+    removeEarlyHideStyle();
+    removeChartGateStyle();
   }
 
   function handleDisableColors(): void {
-    disabled = true;
     colorByName = new Map<string, string>();
+    restoreDomSwatchColors();
+    restoreAllChartColors();
     if (domObserver) {
       try { domObserver.disconnect(); } catch (_) {}
       domObserver = null;
@@ -382,15 +509,26 @@
       try { cancelAnimationFrame(pendingRescan); } catch (_) {}
       pendingRescan = null;
     }
-    const hideStyle = document.getElementById(HIDE_STYLE_ID);
-    if (hideStyle) hideStyle.remove();
+    if (chartPatchObserver) {
+      try { chartPatchObserver.disconnect(); } catch (_) {}
+      chartPatchObserver = null;
+    }
+    removeHideStyle();
+    removeEarlyHideStyle();
+    removeChartGateStyle();
   }
 
   window.addEventListener('message', (event: MessageEvent<WindowMessage>): void => {
     if (event.source !== window) return;
     const data = event.data;
     if (!data || data.source !== SOURCE) return;
-    if (data.type === 'apply-colors') handleApplyColors(data);
+    if (data.type === 'ping') window.postMessage({ source: SOURCE, type: 'ready' }, '*');
+    else if (data.type === 'colors-loading') ensureChartGateStyle();
+    else if (data.type === 'colors-unavailable') {
+      removeEarlyHideStyle();
+      removeChartGateStyle();
+    }
+    else if (data.type === 'apply-colors') handleApplyColors(data);
     else if (data.type === 'clear-colors') handleClearColors();
     else if (data.type === 'disable-colors') handleDisableColors();
   });

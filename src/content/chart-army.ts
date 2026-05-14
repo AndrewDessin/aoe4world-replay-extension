@@ -1,5 +1,5 @@
 import { normalizeName } from './dom.ts';
-import { playerColor } from './colors.ts';
+import { AOE4_PLAYER_COLOR_HEX, playerColor } from './colors.ts';
 import {
   isArmyUnit,
   unitCostTotal,
@@ -29,6 +29,8 @@ import type { Chart, ChartSeries, GameSummary, PlayerSummary } from './types.ts'
 type NativeColors = Map<string, string>;
 type DestroyedEvent = { time: number; cost: number };
 const getArmyTeamSigns = armyTeamSigns as (players: PlayerSummary[], nativePlayerOrder?: string[]) => Map<number, number>;
+const TEAM_POSITIVE_COLOR = AOE4_PLAYER_COLOR_HEX[0];
+const TEAM_NEGATIVE_COLOR = AOE4_PLAYER_COLOR_HEX[1];
 
 export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
@@ -103,8 +105,8 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
   const negValues: number[] = labels.map((_, i) => negMilitary.reduce((s: number, v: number[]) => s + (v[i] || 0), 0));
   const diffValues: number[] = labels.map((_, i) => posValues[i] - negValues[i]);
 
-  const posColor = is1v1 ? playerColor(summary, posPlayers[0], players.indexOf(posPlayers[0]), nativeColors) : '#4dabf7';
-  const negColor = is1v1 ? playerColor(summary, negPlayers[0], players.indexOf(negPlayers[0]), nativeColors) : '#f87171';
+  const posColor = is1v1 ? playerColor(summary, posPlayers[0], players.indexOf(posPlayers[0]), nativeColors) : TEAM_POSITIVE_COLOR;
+  const negColor = is1v1 ? playerColor(summary, negPlayers[0], players.indexOf(negPlayers[0]), nativeColors) : TEAM_NEGATIVE_COLOR;
 
   const leadPosSeries: ChartSeries = {
     label: is1v1 ? (posPlayers[0]?.name || 'Team 1') : 'Team 1',
@@ -183,8 +185,8 @@ export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: Na
 
   const posPlayer = players.find((player: PlayerSummary) => player.team === positiveTeam);
   const negPlayer = players.find((player: PlayerSummary) => player.team === negativeTeam);
-  const posColor = is1v1 ? playerColor(summary, posPlayer as PlayerSummary, players.indexOf(posPlayer as PlayerSummary), nativeColors) : '#4dabf7';
-  const negColor = is1v1 ? playerColor(summary, negPlayer as PlayerSummary, players.indexOf(negPlayer as PlayerSummary), nativeColors) : '#f87171';
+  const posColor = is1v1 ? playerColor(summary, posPlayer as PlayerSummary, players.indexOf(posPlayer as PlayerSummary), nativeColors) : TEAM_POSITIVE_COLOR;
+  const negColor = is1v1 ? playerColor(summary, negPlayer as PlayerSummary, players.indexOf(negPlayer as PlayerSummary), nativeColors) : TEAM_NEGATIVE_COLOR;
 
   return [{
     value: `${SUMMARY_PLUS_PREFIX}destroyed-value`,

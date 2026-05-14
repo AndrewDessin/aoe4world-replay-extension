@@ -61,13 +61,16 @@ test('clearUnitDisplayNameCaches resets display-name caches', () => {
 
 
 test('loadAreaIcon creates Image entry and caches it', async () => {
+  let loaded = 0;
   const entry = loadAreaIcon('https://example.com/good-icon.png');
+  loadAreaIcon('https://example.com/good-icon.png', () => { loaded++; });
   assert.equal(entry.loaded, false);
   assert.ok(entry.img instanceof FakeImage);
   assert.equal(entry.img.crossOrigin, 'anonymous');
 
   await tick();
   assert.equal(entry.loaded, true, 'onload should set loaded');
+  assert.equal(loaded, 1, 'onload callback should fire');
 
   const entry2 = loadAreaIcon('https://example.com/good-icon.png');
   assert.strictEqual(entry2, entry);
@@ -77,6 +80,20 @@ test('loadAreaIcon handles error', async () => {
   const entry = loadAreaIcon('https://example.com/bad-icon.png');
   await tick();
   assert.equal(entry.loaded, false);
+});
+
+test('resolveUnitIconUrl notifies when async icon URL resolves', async () => {
+  let resolved = '';
+  const unit = {
+    iconCandidates: ['https://example.com/good-unit-callback.png'],
+    label: 'Callback Unit',
+  };
+
+  assert.equal(resolveUnitIconUrl(unit, 'callback-unit', url => { resolved = url; }), '');
+  await tick();
+
+  assert.equal(resolved, 'https://example.com/good-unit-callback.png');
+  assert.equal(resolveUnitIconUrl(unit, 'callback-unit'), resolved);
 });
 
 

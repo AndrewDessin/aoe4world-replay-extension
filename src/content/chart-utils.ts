@@ -1,7 +1,7 @@
 import type { ChartSeries } from './types.ts';
 
-export const RESOURCE_KEYS = ['food', 'wood', 'gold', 'stone', 'oliveoil'];
-export const RESOURCE_LABELS = { food: 'Food', wood: 'Wood', gold: 'Gold', stone: 'Stone', oliveoil: 'Olive Oil' };
+export const RESOURCE_KEYS = ['food', 'wood', 'gold', 'stone', 'oliveoil', 'silver'];
+export const RESOURCE_LABELS = { food: 'Food', wood: 'Wood', gold: 'Gold', stone: 'Stone', oliveoil: 'Olive Oil', silver: 'Silver' };
 export const RESOURCE_SAMPLE_SECONDS = 20;
 export const SUMMARY_PLUS_PREFIX = 'aoe4plus:';
 
