@@ -8,8 +8,7 @@
   "host_permissions": [
     "https://aoe-api.worldsedgelink.com/*",
     "https://api.ageofempires.com/*",
-    "https://rl0aoelivemk2blob.blob.core.windows.net/*",
-    "https://raw.githubusercontent.com/*"
+    "https://rl0aoelivemk2blob.blob.core.windows.net/*"
   ],
   "background": {
     "service_worker": "background.js",

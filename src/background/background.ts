@@ -43,17 +43,6 @@ interface UnitDataItem {
     classes: string[];
     costs: unknown;
 }
-interface RawUnitDataItem {
-    id?: string;
-    baseId?: string;
-    name?: string;
-    age?: number;
-    pbgid?: number;
-    attribName?: string;
-    icon?: string;
-    classes?: unknown;
-    costs?: unknown;
-}
 interface ColorCacheEntry {
     players?: PlayerColorInfo[];
     savedAt?: number;
@@ -528,73 +517,21 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
     }
 });
 const UNIT_DATA_CACHE_PREFIX = 'unit_data_v2_';
-const UNIT_DATA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const UNIT_DATA_NEGATIVE_TTL_MS = 60 * 60 * 1000;
-const inFlightUnitDataRequests = new Map<string, Promise<UnitDataItem[] | null>>();
 async function handleGetUnitData(civSlugs: readonly unknown[]): Promise<GetUnitDataResponse> {
     const valid = [...new Set(civSlugs.filter((s: unknown): s is string => /^[a-z0-9_-]+$/i.test(String(s))).map(String))];
     if (!valid.length)
         return { success: true, units: {} };
-    const results = await Promise.all(valid.map((slug): Promise<[
-        string,
-        UnitDataItem[] | null
-    ]> => fetchOneCivUnits(slug).then(units => [slug, units], () => [slug, null])));
     const units: Record<string, UnitDataItem[]> = {};
-    for (const [slug, data] of results)
-        units[slug] = data || [];
+    await Promise.all(valid.map(async (slug) => {
+        const cacheKey = UNIT_DATA_CACHE_PREFIX + slug;
+        const cached = await chrome.storage.local.get(cacheKey) as Record<string, UnitDataCacheEntry | undefined>;
+        const entry = cached[cacheKey];
+        if (entry && !Array.isArray(entry.units) && entry.failedAt) {
+            await chrome.storage.local.remove(cacheKey);
+        }
+        units[slug] = Array.isArray(entry?.units) ? entry.units : [];
+    }));
     return { success: true, units };
-}
-async function fetchOneCivUnits(slug: string): Promise<UnitDataItem[] | null> {
-    const cacheKey = UNIT_DATA_CACHE_PREFIX + slug;
-    const cached = await chrome.storage.local.get(cacheKey) as Record<string, UnitDataCacheEntry | undefined>;
-    const entry = cached[cacheKey];
-    if (entry?.units && entry.savedAt != null && Date.now() - entry.savedAt < UNIT_DATA_TTL_MS)
-        return entry.units;
-    if (entry?.failedAt && Date.now() - entry.failedAt < UNIT_DATA_NEGATIVE_TTL_MS)
-        return null;
-    if (inFlightUnitDataRequests.has(slug))
-        return inFlightUnitDataRequests.get(slug)!;
-    const promise: Promise<UnitDataItem[] | null> = (async () => {
-        try {
-            const url = `https://raw.githubusercontent.com/aoe4world/data/main/units/${slug}.json`;
-            const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
-            if (!resp.ok)
-                throw new Error(`http_${resp.status}`);
-            const data = await resp.json() as {
-                data?: RawUnitDataItem[];
-            };
-            const raw = Array.isArray(data?.data) ? data.data : [];
-            const slim = raw
-                .filter((u: RawUnitDataItem | undefined): u is RawUnitDataItem & {
-                id: string;
-                name: string;
-            } => !!u && !!u.id && !!u.name)
-                .map((u): UnitDataItem => ({
-                id: u.id,
-                baseId: u.baseId || '',
-                name: u.name,
-                age: u.age || 0,
-                pbgid: u.pbgid || 0,
-                attribName: u.attribName || '',
-                icon: u.icon || '',
-                classes: Array.isArray(u.classes) ? u.classes : [],
-                costs: u.costs || null,
-            }));
-            await chrome.storage.local.set({ [cacheKey]: { units: slim, savedAt: Date.now() } });
-            return slim;
-        }
-        catch (err) {
-            await chrome.storage.local.set({ [cacheKey]: { failedAt: Date.now(), error: (err as {
-                        message?: string;
-                    })?.message || String(err) } });
-            return null;
-        }
-        finally {
-            inFlightUnitDataRequests.delete(slug);
-        }
-    })();
-    inFlightUnitDataRequests.set(slug, promise);
-    return promise;
 }
 export interface GetPlayerColorsOptions {
     profileId?: string | number | null;

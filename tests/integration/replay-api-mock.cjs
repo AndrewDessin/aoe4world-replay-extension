@@ -44,13 +44,6 @@ async function installReplayApiMock(bg, options = {}) {
           });
         }
 
-        if (href.startsWith('https://raw.githubusercontent.com/aoe4world/data/main/units/')) {
-          return new Response(JSON.stringify({ data: [] }), {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          });
-        }
-
         if (href.includes('aoe-api.worldsedgelink.com') && href.includes('getReplayFiles')) {
           state.replayMetadataCalls++;
           if (replayMetadataFails || (replayMetadataFailsOnce && state.replayMetadataCalls === 1)) {
