@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>spartain's Game - AoE4 World</title>
+  <link rel="modulepreload" href="https://static.aoe4world.com/vite/assets/chart-0b40c2d3.js" as="script" crossorigin="anonymous">
+</head>
+<body class="bg-gray-800 text-white">
+  <main>
+    <div role="rowgroup" data-game-id="233034826">
+      <a role="cell" href="/players/24574510-spartain/games/233034826?sig=34e9557cdb20aabdb773dfb31ee55a1f76da048a"><span aria-label="Game Date" title="2026-05-01 00:00 UTC">2 days ago</span> View Summary</a>
+      <h3>Rocky River</h3>
+      <div class="text-sm">Ranked 1v1</div>
+      <div aria-label="Team"><a href="/players/24574510-spartain">spartain</a></div>
+      <div aria-label="Opponent Team"><a href="/players/123-DonationDonation">DonationDonation</a></div>
+    </div>
+    <h2>Game #233034826</h2>
+    <build-order highlighted-profile-id="24574510" url="/players/24574510-spartain/games/233034826/summary?camelize=true"></build-order>
+    <section id="timeline-root">
+      <h3>Timeline</h3>
+      <select aria-label="Timeline Metric">
+        <option value="army">Army</option>
+        <option value="workers">Workers</option>
+        <option value="population">Population</option>
+      </select>
+      <div>
+        <h3>Army</h3>
+        <canvas width="872" height="436"></canvas>
+      </div>
+      <div class="flex items-center cursor-pointer"><span class="rounded-full w-2 h-2" style="background:#0162FF"></span><span class="font-bold">spartain</span></div>
+      <div class="flex items-center cursor-pointer"><span class="rounded-full w-2 h-2" style="background:#C000C0"></span><span class="font-bold">DonationDonation</span></div>
+    </section>
+  </main>
+  <script type="module">
+    import { Chart } from 'https://static.aoe4world.com/vite/assets/chart-0b40c2d3.js';
+    const canvas = document.querySelector('canvas');
+    const chart = new Chart(canvas, {
+      data: {
+        datasets: [
+          { label: 'spartain', borderColor: '#0162FF', backgroundColor: '#0162FF' },
+          { label: 'DonationDonation', borderColor: '#C000C0', backgroundColor: '#C000C0' },
+        ],
+      },
+    });
+    document.querySelectorAll('.flex.items-center.cursor-pointer').forEach((el) => {
+      el.addEventListener('mouseenter', () => chart.setFixtureHover(true));
+      el.addEventListener('mouseleave', () => chart.setFixtureHover(false));
+    });
+    document.body.dataset.fixtureHydrated = '1';
+  </script>
+</body>
+</html>

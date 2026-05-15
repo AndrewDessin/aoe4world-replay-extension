@@ -125,6 +125,25 @@ describe('replay button summary gating', () => {
     assert.match(button.textContent || '', /Watch Replay/);
   });
 
+  it('keeps Watch Replay on later scans after appending its own text', async () => {
+    const { document } = setupDom(visibleSummaryRow('2007'));
+    const trigger = installIntersectionObserverMock();
+    installChromeMock();
+    const mod = await loadReplayButtonModule();
+    await delay(0);
+
+    mod.scanGameRows();
+    trigger();
+    const button = await waitFor(() => document.querySelector('.aoe4-replay-btn'));
+    assert.ok(button, 'expected replay button');
+
+    mod.scanGameRows();
+    await delay(100);
+
+    assert.equal(document.querySelectorAll('.aoe4-replay-btn').length, 1);
+    assert.equal(document.querySelectorAll('.aoe4-replay-loading').length, 0);
+  });
+
   it('skips replay controls when View Summary is absent', async () => {
     const { document } = setupDom(hiddenSummaryRow('2002'));
     const trigger = installIntersectionObserverMock();

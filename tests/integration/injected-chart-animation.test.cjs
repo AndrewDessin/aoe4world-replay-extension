@@ -38,6 +38,8 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const { installReplayApiMock } = require('./replay-api-mock.cjs');
+const { installAoe4WorldFixtureRoutes } = require('./aoe4world-fixtures.cjs');
 
 const EXT_PATH = path.resolve(__dirname, '..', '..', 'chrome-extension');
 const PROFILE_PATH = path.join(__dirname, '.pw-profile-anim');
@@ -58,7 +60,9 @@ async function setup() {
   await bg.evaluate((s) => new Promise(r => chrome.storage.local.set({ settings: s }, r)), {
     parseGameData: true, injectCharts: true, recolorSwatches: false, debugLogs: false,
   });
+  await installReplayApiMock(bg);
   page = ctx.pages()[0] || await ctx.newPage();
+  await installAoe4WorldFixtureRoutes(page);
 }
 
 async function teardown() {

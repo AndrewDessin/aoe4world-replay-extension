@@ -296,9 +296,6 @@ function updatePatchFromUrl(url: string): void {
         savePatchInfo();
     }
 }
-settingsReady.then(() => {
-    ensureCurrentPatch();
-});
 (async () => {
     try {
         const all = await chrome.storage.local.get(null) as StorageItems;

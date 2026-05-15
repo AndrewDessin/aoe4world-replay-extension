@@ -17,6 +17,8 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const { installReplayApiMock } = require('./replay-api-mock.cjs');
+const { installAoe4WorldFixtureRoutes } = require('./aoe4world-fixtures.cjs');
 
 const EXT_PATH = path.resolve(__dirname, '..', '..', 'chrome-extension');
 const PROFILE_PATH = path.join(__dirname, '.pw-profile-mac-silver');
@@ -24,9 +26,6 @@ const PROFILE_PATH = path.join(__dirname, '.pw-profile-mac-silver');
 // The live game page — extension content scripts match aoe4world.com/* only.
 const GAME_URL =
   'https://aoe4world.com/players/20431588-1-John-2-1/games/233206284?sig=018b32b1f8cdaacce4404d9e9107358aa01698ef';
-
-// Summary fixture — loaded from file so changes are tracked in source control.
-const SUMMARY_PATH = path.resolve(__dirname, '..', 'fixtures', 'summary-233206284.json');
 
 let ctx, bg, page;
 
@@ -43,26 +42,14 @@ async function setup() {
     recolorSwatches: false,
     debugLogs: false,
   });
+  await installReplayApiMock(bg);
   page = ctx.pages()[0] || await ctx.newPage();
+  await installAoe4WorldFixtureRoutes(page);
 }
 
 async function teardown() {
   if (ctx) await ctx.close().catch(() => {});
   try { fs.rmSync(PROFILE_PATH, { recursive: true, force: true }); } catch (_) {}
-}
-
-// Intercept the summary API call and serve the local fixture.
-async function routeSummary() {
-  const summaryJson = fs.readFileSync(SUMMARY_PATH, 'utf8');
-  await page.route(
-    /\/players\/\d+[^/]*\/games\/233206284\/summary/,
-    (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: summaryJson,
-      }),
-  );
 }
 
 async function navigate(url, waitMs = 14000) {
@@ -94,7 +81,6 @@ function assert(condition, msg) {
 (async () => {
   console.log('\n=== Macedonian Silver Chart ===');
   await setup();
-  await routeSummary();
   await navigate(GAME_URL);
 
   await test('optgroup with custom chart options is injected', async () => {

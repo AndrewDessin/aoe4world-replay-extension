@@ -32,6 +32,25 @@ async function installReplayApiMock(bg, options = {}) {
         const url = typeof input === 'string' ? input : input?.url;
         const href = String(url || '');
 
+        if (href === 'https://aoe4world.com/api/v0/games?limit=5&state=finished') {
+          return new Response(JSON.stringify({
+            games: [
+              { game_id: 233034826, patch: '4.0.0/8719' },
+              { game_id: 233206284, patch: '4.0.0/8719' },
+            ],
+          }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+
+        if (href.startsWith('https://raw.githubusercontent.com/aoe4world/data/main/units/')) {
+          return new Response(JSON.stringify({ data: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+
         if (href.includes('aoe-api.worldsedgelink.com') && href.includes('getReplayFiles')) {
           state.replayMetadataCalls++;
           if (replayMetadataFails || (replayMetadataFailsOnce && state.replayMetadataCalls === 1)) {

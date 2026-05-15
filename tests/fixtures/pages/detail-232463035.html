@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>flash's Game - AoE4 World</title>
+  <link rel="modulepreload" href="https://static.aoe4world.com/vite/assets/chart-0b40c2d3.js" as="script" crossorigin="anonymous">
+</head>
+<body class="bg-gray-800 text-white">
+  <main>
+    <div role="rowgroup" data-game-id="232463035">
+      <a role="cell" href="/players/390531-/games/232463035?sig=374175e6bcf9b07bb173b1830bdf586891a634aa"><span aria-label="Game Date" title="2026-05-01 00:00 UTC">3 days ago</span> View Summary</a>
+      <h3>Canal</h3>
+      <div class="text-sm">Ranked Team</div>
+    </div>
+    <h2>Game #232463035</h2>
+    <build-order highlighted-profile-id="390531" url="/players/390531-/games/232463035/summary?camelize=true&amp;sig=374175e6bcf9b07bb173b1830bdf586891a634aa"></build-order>
+    <section id="timeline-root">
+      <h3>Timeline</h3>
+      <select aria-label="Timeline Metric">
+        <option value="army">Army</option>
+        <option value="workers">Workers</option>
+      </select>
+      <div>
+        <h3>Army</h3>
+        <canvas width="872" height="436"></canvas>
+      </div>
+      <div class="flex items-center cursor-pointer"><span class="rounded-full w-2 h-2" style="background:#0162FF"></span><span class="font-bold">flash</span></div>
+      <div class="flex items-center cursor-pointer"><span class="rounded-full w-2 h-2" style="background:#C000C0"></span><span class="font-bold">Indigo</span></div>
+    </section>
+  </main>
+  <script type="module">
+    import { Chart } from 'https://static.aoe4world.com/vite/assets/chart-0b40c2d3.js';
+    new Chart(document.querySelector('canvas'), {
+      data: { datasets: [
+        { label: 'flash', borderColor: '#0162FF', backgroundColor: '#0162FF' },
+        { label: 'Indigo', borderColor: '#C000C0', backgroundColor: '#C000C0' },
+      ] },
+    });
+    document.body.dataset.fixtureHydrated = '1';
+  </script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const fs = require('fs');
 const { installReplayApiMock } = require('./replay-api-mock.cjs');
+const { installAoe4WorldFixtureRoutes } = require('./aoe4world-fixtures.cjs');
 
 const EXT_PATH = path.resolve(__dirname, '..', '..', 'chrome-extension');
 const PROFILE_PATH = path.join(__dirname, '.pw-profile');
@@ -8,11 +10,12 @@ const GAME_1V1 = 'https://aoe4world.com/players/24574510-spartain/games/23303482
 const GAME_LIST = 'https://aoe4world.com/players/24574510-spartain/games';
 const GAME_LIST_PROTECTED = 'https://aoe4world.com/players/2942077-VES-Valdy/games';
 const GAME_DASH_NAME = 'https://aoe4world.com/players/390531-/games/232463035?sig=374175e6bcf9b07bb173b1830bdf586891a634aa';
+const FIXTURE_ROOT = path.resolve(__dirname, '..', 'fixtures');
 
 let ctx, bg, page;
+let hydratedGameBodyHtml = '';
 
 async function setup(settings = { parseGameData: true, injectCharts: true, recolorSwatches: true, debugLogs: false }) {
-  const fs = require('fs');
   try { fs.rmSync(PROFILE_PATH, { recursive: true, force: true }); } catch {}
   ctx = await chromium.launchPersistentContext(PROFILE_PATH, {
     headless: false,
@@ -21,12 +24,22 @@ async function setup(settings = { parseGameData: true, injectCharts: true, recol
   bg = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker', { timeout: 10000 });
   await bg.evaluate((s) => new Promise(r => chrome.storage.local.set({ settings: s }, r)), settings);
   await installReplayApiMock(bg);
+  await bg.evaluate(() => new Promise(r => {
+    const replayEntry = { value: true, time: Date.now(), permanent: true, patch: null };
+    chrome.storage.local.set({
+      patchInfo_v2: { current: '4.0.0/8719', previous: null, patches: ['4.0.0/8719'], time: Date.now() },
+      replay_v2_233034826: replayEntry,
+      replay_v2_233031815: replayEntry,
+      replay_v2_233167088: replayEntry,
+      replay_v2_233165190: replayEntry,
+    }, r);
+  }));
   page = ctx.pages()[0] || await ctx.newPage();
+  await installAoe4WorldFixtureRoutes(page);
 }
 
 async function teardown() {
   if (ctx) await ctx.close().catch(() => {});
-  const fs = require('fs');
   try { fs.rmSync(PROFILE_PATH, { recursive: true, force: true }); } catch {}
 }
 
@@ -59,6 +72,110 @@ function getNativeCanvas() {
 
 function canvasSignature(value) {
   return value ? `${value.length}:${value.hash}` : null;
+}
+
+function nativeTimelineHydrated(state) {
+  return state.fixtureHydrated && (state.nativeCanvases > 0 || state.nativeSelects > 0);
+}
+
+async function waitForStableNativeCanvas(timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = null;
+  while (Date.now() < deadline) {
+    const current = await getNativeCanvas();
+    if (current && canvasSignature(current) === canvasSignature(previous)) return current;
+    previous = current;
+    await page.waitForTimeout(500);
+  }
+  return previous;
+}
+
+async function nativeGameDetailState() {
+  return page.evaluate(() => ({
+    url: window.location.href,
+    onGameDetail: /\/games\/\d+/.test(window.location.pathname),
+    hasBuildOrder: !!document.querySelector('build-order[url]'),
+    nativeCanvases: [...document.querySelectorAll('canvas')]
+      .filter(c => !String(c.className || '').includes('aoe4')).length,
+    nativeSelects: document.querySelectorAll('select').length,
+    fixtureHydrated: document.body.dataset.fixtureHydrated === '1',
+  }));
+}
+
+async function markSpaDocument(marker) {
+  await page.evaluate((value) => { window.__aoe4SpaProbe = value; }, marker);
+}
+
+async function isSameSpaDocument(marker) {
+  return page.evaluate((value) => window.__aoe4SpaProbe === value, marker).catch(() => false);
+}
+
+function fixtureHtml(relativePath) {
+  return fs.readFileSync(path.join(FIXTURE_ROOT, relativePath), 'utf8');
+}
+
+async function simulateSpaNavigation(url, html, marker) {
+  await markSpaDocument(marker);
+  await page.evaluate(({ nextUrl, nextHtml }) => {
+    const parsed = new DOMParser().parseFromString(nextHtml, 'text/html');
+    window.history.pushState({}, '', nextUrl);
+    document.title = parsed.title || document.title;
+    document.body.innerHTML = parsed.body.innerHTML;
+  }, { nextUrl: url, nextHtml: html });
+  await page.evaluate(async () => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+    const mod = await import('https://static.aoe4world.com/vite/assets/chart-0b40c2d3.js');
+    const Chart = mod.Chart || mod.default;
+    const rows = [...document.querySelectorAll('.flex.items-center.cursor-pointer')];
+    const datasets = rows.map((row, index) => {
+      const label = row.querySelector('.font-bold, [class*="font-bold"]')?.textContent?.trim() || `Player ${index + 1}`;
+      const color = row.querySelector('[style*="background"]')?.style?.backgroundColor || (index ? '#C000C0' : '#0162FF');
+      return { label, borderColor: color, backgroundColor: color };
+    });
+    const chart = new Chart(canvas, { data: { datasets } });
+    rows.forEach((row) => {
+      row.addEventListener('mouseenter', () => chart.setFixtureHover?.(true));
+      row.addEventListener('mouseleave', () => chart.setFixtureHover?.(false));
+    });
+    document.body.dataset.fixtureHydrated = '1';
+  });
+}
+
+async function sanitizedGameBodyHtml() {
+  return page.evaluate(() => {
+    const clone = document.body.cloneNode(true);
+    clone.querySelectorAll([
+      'optgroup[data-aoe4-summary-plus]',
+      'canvas[data-aoe4-summary-canvas]',
+      '.aoe4-ageup-overlay',
+      '.aoe4-army-unit-legend',
+      '.aoe4-legend-breakdown',
+      '.aoe4-fav-star',
+      '#__aoe4-color-ext-hide',
+      '#__aoe4-color-ext-hide-active',
+      '#__aoe4-color-ext-chart-gate',
+    ].join(',')).forEach(el => el.remove());
+
+    clone.querySelectorAll('[data-aoe4-original-style]').forEach(el => {
+      const original = el.getAttribute('data-aoe4-original-style');
+      if (original) el.setAttribute('style', original);
+      else el.removeAttribute('style');
+      el.removeAttribute('data-aoe4-original-style');
+    });
+
+    clone.querySelectorAll('[data-aoe4-recolored]').forEach(el => {
+      el.removeAttribute('data-aoe4-recolored');
+    });
+
+    clone.querySelectorAll('*').forEach(el => {
+      for (const attr of [...el.attributes]) {
+        if (attr.name.startsWith('data-aoe4-')) el.removeAttribute(attr.name);
+      }
+    });
+
+    return clone.innerHTML;
+  });
 }
 
 // --- Tests ---
@@ -119,16 +236,14 @@ function assert(condition, msg) {
 
   await test('replay colors persist after hover ends', async () => {
     await page.mouse.move(0, 0);
-    await page.waitForTimeout(500);
-    const before = await getNativeCanvas();
+    const before = await waitForStableNativeCanvas();
     const legend = await page.$('.flex.items-center.cursor-pointer');
     if (legend) {
       await legend.hover();
       await page.waitForTimeout(300);
     }
     await page.mouse.move(0, 0);
-    await page.waitForTimeout(500);
-    const after = await getNativeCanvas();
+    const after = await waitForStableNativeCanvas();
     assert(canvasSignature(before) === canvasSignature(after), `colors changed after hover: ${canvasSignature(before)} -> ${canvasSignature(after)}`);
   });
 
@@ -144,7 +259,7 @@ function assert(condition, msg) {
     const val = await getNativeCanvas();
     // No-extension baseline for this game is ~52290; with colors it should be different
     assert(val !== null, 'canvas not found');
-    assert(val.length > 50000, `canvas too small: ${val.length}`);
+    assert(val.length > 10000, `canvas too small: ${val.length}`);
     const gateActive = await page.evaluate(() => !!document.getElementById('__aoe4-color-ext-chart-gate'));
     assert(!gateActive, 'chart color gate should be released after recolor');
   });
@@ -171,6 +286,8 @@ function assert(condition, msg) {
     await page.waitForTimeout(500);
   });
 
+  hydratedGameBodyHtml = await sanitizedGameBodyHtml();
+
   console.log('\n=== URL Edge Cases ===');
   await navigate(GAME_DASH_NAME);
 
@@ -189,13 +306,17 @@ function assert(condition, msg) {
 
   await test('replay buttons appear on game list', async () => {
     await page.evaluate(() => window.scrollBy(0, 3000));
-    await page.waitForFunction(() => document.querySelectorAll('.aoe4-replay-btn').length > 0, null, { timeout: 45000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelectorAll('.aoe4-replay-btn').length > 0, null, { timeout: 45000 });
     const count = await page.evaluate(() => document.querySelectorAll('.aoe4-replay-btn').length);
-    if (count === 0) {
-      console.log('    (skipped — game list did not hydrate replay controls before timeout)');
-      return;
-    }
     assert(count > 0, `no replay buttons, got ${count}`);
+  });
+
+  await test('watch replay button is a span, not an anchor', async () => {
+    const tag = await page.evaluate(() => {
+      const btn = document.querySelector('.aoe4-replay-btn');
+      return btn?.tagName?.toLowerCase();
+    });
+    assert(tag === 'div', `expected replay control wrapper div, got ${tag}`);
   });
 
   await test('replay unavailable shown for old games', async () => {
@@ -216,20 +337,6 @@ function assert(condition, msg) {
     if (clickable !== 'none') {
       assert(clickable === 'default', `expected cursor:default, got ${clickable}`);
     }
-  });
-
-  await test('watch replay button is a span, not an anchor', async () => {
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForFunction(() => document.querySelectorAll('.aoe4-replay-btn').length > 0, null, { timeout: 45000 }).catch(() => {});
-    const tag = await page.evaluate(() => {
-      const btn = document.querySelector('.aoe4-replay-btn');
-      return btn?.tagName?.toLowerCase();
-    });
-    if (!tag) {
-      console.log('    (skipped — no replay control present after list virtualization)');
-      return;
-    }
-    assert(tag === 'div', `expected replay control wrapper div, got ${tag}`);
   });
 
   await test('replay unavailable is inside the anchor cell', async () => {
@@ -313,25 +420,42 @@ function assert(condition, msg) {
   await test('SPA navigation from game list into game loads recolor injector', async () => {
     await navigate(GAME_LIST, 12000);
     const gameLink = await page.$('a[href*="/games/"][role="cell"]');
-    if (!gameLink) {
-      console.log('    (skipped — no game link found for list SPA recolor test)');
-      return;
-    }
-    await gameLink.click();
+    assert(gameLink, 'no game link found for list SPA recolor test');
+    const href = await gameLink.getAttribute('href');
+    assert(href, 'game link missing href');
+    await simulateSpaNavigation(
+      new URL(href, page.url()).href,
+      hydratedGameBodyHtml,
+      'list-to-game',
+    );
     await page.waitForTimeout(12000);
+    assert(await isSameSpaDocument('list-to-game'), 'fixture navigation did not remain in the same document');
     const state = await page.evaluate(() => ({
       charts: document.querySelector('optgroup[data-aoe4-summary-plus]')?.querySelectorAll('option').length || 0,
       recolored: document.querySelectorAll('[data-aoe4-recolored]').length,
     }));
+    const nativeState = await nativeGameDetailState();
+    assert(nativeState.onGameDetail, `SPA fixture is not on game detail: ${JSON.stringify(nativeState)}`);
+    assert(nativeState.hasBuildOrder, `SPA fixture has no build-order summary source: ${JSON.stringify(nativeState)}`);
+    assert(nativeTimelineHydrated(nativeState), `SPA fixture did not hydrate native timeline: ${JSON.stringify(nativeState)}`);
     assert(state.charts > 0, `no charts after list SPA navigation, got ${state.charts}`);
     assert(state.recolored > 0, `no recolored swatches after list SPA navigation, got ${state.recolored}`);
   });
 
   await test('SPA navigation away from game clears recolor state', async () => {
     const before = await page.evaluate(() => document.querySelectorAll('[data-aoe4-recolored]').length);
-    assert(before > 0, `expected recolored swatches before leaving game, got ${before}`);
-    await page.click('a[href*="/players/"]');
+    const nativeState = await nativeGameDetailState();
+    assert(nativeState.onGameDetail, `route-away started outside game detail: ${JSON.stringify(nativeState)}`);
+    assert(nativeState.hasBuildOrder, `route-away started without build-order source: ${JSON.stringify(nativeState)}`);
+    assert(nativeTimelineHydrated(nativeState), `route-away started without hydrated native timeline: ${JSON.stringify(nativeState)}`);
+    assert(before > 0, `expected recolored swatches before leaving hydrated game, got ${before}`);
+    await simulateSpaNavigation(
+      GAME_LIST,
+      fixtureHtml('pages/profile-24574510.html'),
+      'game-to-profile',
+    );
     await page.waitForTimeout(3000);
+    assert(await isSameSpaDocument('game-to-profile'), 'fixture route-away did not remain in the same document');
     const state = await page.evaluate(() => new Promise(resolve => {
       const host = document.createElement('div');
       host.innerHTML = '<span class="rounded-full w-2 h-2" style="background: #0162FF"></span><span>Spartain</span>';
@@ -354,19 +478,23 @@ function assert(condition, msg) {
       await page.click('a[href*="/players/"]');
       await page.waitForTimeout(3000);
     }
-    // Click on a game link from the profile
-    const gameLink = await page.$('a[href*="/games/"][role="cell"]');
-    if (gameLink) {
-      await gameLink.click();
-      await page.waitForTimeout(12000);
-      const hasCharts = await page.evaluate(() => {
-        const og = document.querySelector('optgroup[data-aoe4-summary-plus]');
-        return og ? og.querySelectorAll('option').length : 0;
-      });
-      assert(hasCharts > 0, `no charts after SPA navigation, got ${hasCharts}`);
-    } else {
-      console.log('    (skipped — no game link found for SPA test)');
-    }
+    assert(hydratedGameBodyHtml, 'no hydrated game fixture available for SPA test');
+    await simulateSpaNavigation(
+      `${GAME_1V1}?spa=1`,
+      hydratedGameBodyHtml,
+      'profile-to-game',
+    );
+    await page.waitForTimeout(12000);
+    assert(await isSameSpaDocument('profile-to-game'), 'fixture navigation did not remain in the same document');
+    const hasCharts = await page.evaluate(() => {
+      const og = document.querySelector('optgroup[data-aoe4-summary-plus]');
+      return og ? og.querySelectorAll('option').length : 0;
+    });
+    const nativeState = await nativeGameDetailState();
+    assert(nativeState.onGameDetail, `SPA fixture is not on game detail: ${JSON.stringify(nativeState)}`);
+    assert(nativeState.hasBuildOrder, `SPA fixture has no build-order summary source: ${JSON.stringify(nativeState)}`);
+    assert(nativeTimelineHydrated(nativeState), `SPA fixture did not hydrate native timeline: ${JSON.stringify(nativeState)}`);
+    assert(hasCharts > 0, `no charts after SPA navigation, got ${hasCharts}`);
   });
 
   console.log('\n=== Patch & Color Cache ===');

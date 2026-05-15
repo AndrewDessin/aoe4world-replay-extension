@@ -170,7 +170,10 @@ function createUnavailableDiv(): HTMLDivElement {
 }
 
 function rowHasViewSummary(anchor: HTMLElement): boolean {
-  return /\bview\s+summary\b/i.test(anchor.textContent || '');
+  const clone = anchor.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('.aoe4-replay-btn, .aoe4-replay-loading, .aoe4-replay-unavailable')
+    .forEach(el => el.remove());
+  return /\bview\s+summary\b/i.test(clone.textContent || '');
 }
 
 function shouldRenderReplayControls(anchor: HTMLElement): boolean {
