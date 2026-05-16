@@ -1,9 +1,8 @@
 /**
- * Integration test: uncached replay colors fall back when WorldsEdge metadata is unavailable.
+ * Integration test: uncached replay colors fail softly when WorldsEdge data is unavailable.
  *
- * The background service worker first sees a transient getReplayFiles 502, then
- * uses the profile-specific legacy replay endpoint to fetch and parse the replay
- * on the initial uncached color request.
+ * No extra-origin legacy fallback is available, so metadata/blob failures should
+ * produce cacheable soft failures without requesting any extra origin.
  */
 
 'use strict';
@@ -59,15 +58,13 @@ async function requestColors() {
   }));
 }
 
-async function runFallbackScenario({ profileSuffix, replayMockOptions, verifyState, successMessage }) {
+async function runFailureScenario({ profileSuffix, replayMockOptions, verifyResponse, verifyState, successMessage }) {
   const profilePath = `${PROFILE_BASE_PATH}-${profileSuffix}`;
   await setup(profilePath, replayMockOptions);
   try {
     const response = await requestColors();
 
-    assert(response?.success === true, `expected fallback success, got ${JSON.stringify(response)}`);
-    assert(Array.isArray(response.players) && response.players.some(p => p.name === 'Spartain'),
-      `expected parsed replay players, got ${JSON.stringify(response.players)}`);
+    verifyResponse(response);
 
     const state = await bg.evaluate(() => globalThis.__aoe4ReplayApiMockState);
     verifyState(state);
@@ -75,7 +72,8 @@ async function runFallbackScenario({ profileSuffix, replayMockOptions, verifySta
     const cacheEntry = await bg.evaluate(() => new Promise(resolve => {
       chrome.storage.local.get('colors_v5_233034826', result => resolve(result.colors_v5_233034826));
     }));
-    assert(cacheEntry?.players?.length > 0, `expected color cache entry, got ${JSON.stringify(cacheEntry)}`);
+    assert(cacheEntry?.softFailure === true, `expected soft failure cache entry, got ${JSON.stringify(cacheEntry)}`);
+    assert(!cacheEntry?.players, `did not expect parsed replay players, got ${JSON.stringify(cacheEntry)}`);
 
     console.log(`  ✓ ${successMessage}`);
   } finally {
@@ -84,25 +82,31 @@ async function runFallbackScenario({ profileSuffix, replayMockOptions, verifySta
 }
 
 (async () => {
-  console.log('\n=== Uncached Color Fallback ===');
-  await runFallbackScenario({
+  console.log('\n=== Uncached Color Soft Failure ===');
+  await runFailureScenario({
     profileSuffix: 'metadata',
     replayMockOptions: { replayMetadataFails: true },
+    verifyResponse: (response) => {
+      assert(response?.success === false, `expected metadata failure, got ${JSON.stringify(response)}`);
+      assert(response.error === 'replay_api_502', `expected replay_api_502, got ${JSON.stringify(response)}`);
+    },
     verifyState: (state) => {
       assert(state.replayMetadataCalls >= 1, `expected replay metadata call, got ${JSON.stringify(state)}`);
       assert(state.blobReplayCalls === 0, `expected no blob call after metadata failure, got ${JSON.stringify(state)}`);
-      assert(state.legacyReplayCalls === 1, `expected one legacy fallback call, got ${JSON.stringify(state)}`);
     },
-    successMessage: 'legacy replay fallback supplies uncached colors after replay metadata 502',
+    successMessage: 'metadata 502 is cached as an uncached-color soft failure',
   });
-  await runFallbackScenario({
+  await runFailureScenario({
     profileSuffix: 'blob',
     replayMockOptions: { replayBlobFails: true },
+    verifyResponse: (response) => {
+      assert(response?.success === false, `expected blob failure, got ${JSON.stringify(response)}`);
+      assert(response.error === 'blob_fetch_502', `expected blob_fetch_502, got ${JSON.stringify(response)}`);
+    },
     verifyState: (state) => {
       assert(state.replayMetadataCalls === 1, `expected one replay metadata call, got ${JSON.stringify(state)}`);
       assert(state.blobReplayCalls === 1, `expected one blob replay call, got ${JSON.stringify(state)}`);
-      assert(state.legacyReplayCalls === 1, `expected one legacy fallback call, got ${JSON.stringify(state)}`);
     },
-    successMessage: 'legacy replay fallback supplies uncached colors after replay blob 502',
+    successMessage: 'blob 502 is cached as an uncached-color soft failure',
   });
 })().catch(e => { console.error('FATAL:', e); process.exit(1); });

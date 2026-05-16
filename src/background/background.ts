@@ -49,7 +49,6 @@ interface ColorCacheEntry {
     failedAt?: number;
     error?: string;
     softFailure?: boolean;
-    legacyTried?: boolean;
 }
 interface UnitDataCacheEntry {
     units?: UnitDataItem[];
@@ -540,14 +539,12 @@ export async function handleGetPlayerColors(matchId: string, options: GetPlayerC
     const cacheKey = COLORS_CACHE_KEY_PREFIX + matchId;
     const cached = await chrome.storage.local.get(cacheKey) as Record<string, ColorCacheEntry | undefined>;
     const entry = cached[cacheKey];
-    const profileId = normalizeProfileId(options.profileId);
     if (entry?.players) {
         return { success: true, players: entry.players, cached: true };
     }
     if (entry?.failedAt) {
         const ttl = entry.softFailure ? COLORS_SOFT_FAILURE_TTL_MS : COLORS_NEGATIVE_TTL_MS;
-        const shouldTryProfileFallback = profileId && entry.softFailure && !entry.legacyTried;
-        if (!shouldTryProfileFallback && Date.now() - entry.failedAt < ttl) {
+        if (Date.now() - entry.failedAt < ttl) {
             return { success: false, error: entry.error || 'cached_failure', cached: true };
         }
     }
@@ -556,10 +553,10 @@ export async function handleGetPlayerColors(matchId: string, options: GetPlayerC
     }
     const inflight: Promise<GetPlayerColorsResponse> = (async () => {
         try {
-            if (Date.now() < backoffUntil && !profileId) {
+            if (Date.now() < backoffUntil) {
                 return { success: false, error: 'rate_limited', rateLimited: true };
             }
-            const players = await fetchAndParsePlayerColors(matchId, profileId);
+            const players = await fetchAndParsePlayerColors(matchId);
             await storeColorEntry(cacheKey, { players, savedAt: Date.now() });
             return { success: true, players, cached: false };
         }
@@ -578,7 +575,6 @@ export async function handleGetPlayerColors(matchId: string, options: GetPlayerC
                     failedAt: Date.now(),
                     error: message,
                     softFailure: true,
-                    legacyTried: message.startsWith('legacy_replay_'),
                 });
             }
             return { success: false, error: message };
@@ -591,12 +587,6 @@ export async function handleGetPlayerColors(matchId: string, options: GetPlayerC
     finally {
         inFlightColorRequests.delete(matchId);
     }
-}
-function normalizeProfileId(profileId: string | number | null | undefined): string | null {
-    if (profileId == null)
-        return null;
-    const value = String(profileId).trim();
-    return /^\d+$/.test(value) ? value : null;
 }
 export function isPermanentFailure(message: string | null | undefined): boolean {
     if (!message)
@@ -624,45 +614,22 @@ export function isSoftFailure(message: string | null | undefined): boolean {
         return true;
     if (/^replay_api_5\d\d$/.test(message))
         return true;
-    if (/^legacy_replay_/.test(message))
-        return true;
     if (/HTTP \d+ downloading replay/i.test(message))
         return true;
     return false;
 }
-async function fetchAndParsePlayerColors(matchId: string, profileId: string | null = null): Promise<PlayerColorInfo[]> {
+async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorInfo[]> {
     const cached = replayUrlCache.get(matchId);
     let replayUrl = (cached && Date.now() < cached.expiry) ? cached.url : null;
-    let arrayBuffer: ArrayBuffer | null = null;
     replayUrlCache.delete(matchId);
     if (!replayUrl) {
-        if (profileId && Date.now() < backoffUntil) {
-            arrayBuffer = await fetchLegacyReplayArrayBuffer(matchId, profileId, new Error('rate_limited'));
-        }
-        else {
-            try {
-                replayUrl = await fetchReplayFileUrl(matchId);
-            }
-            catch (err) {
-                if (!profileId) throw err;
-                arrayBuffer = await fetchLegacyReplayArrayBuffer(matchId, profileId, err);
-            }
-        }
+        replayUrl = await fetchReplayFileUrl(matchId);
     }
-    if (!arrayBuffer) {
-        if (!replayUrl) throw new Error('no_replay_file');
-        updatePatchFromUrl(replayUrl);
-        try {
-            const blobResponse = await fetch(replayUrl);
-            if (!blobResponse.ok)
-                throw new Error(`blob_fetch_${blobResponse.status}`);
-            arrayBuffer = await blobResponse.arrayBuffer();
-        }
-        catch (err) {
-            if (!profileId) throw err;
-            arrayBuffer = await fetchLegacyReplayArrayBuffer(matchId, profileId, err);
-        }
-    }
+    updatePatchFromUrl(replayUrl);
+    const blobResponse = await fetch(replayUrl);
+    if (!blobResponse.ok)
+        throw new Error(`blob_fetch_${blobResponse.status}`);
+    const arrayBuffer = await blobResponse.arrayBuffer();
     return parseReplayPlayersFromArrayBuffer(arrayBuffer, matchId);
 }
 async function fetchReplayFileUrl(matchId: string): Promise<string> {
@@ -685,25 +652,6 @@ async function fetchReplayFileUrl(matchId: string): Promise<string> {
     const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
     if (!replayFile) throw new Error('no_replay_file');
     return replayFile.url as string;
-}
-async function fetchLegacyReplayArrayBuffer(matchId: string, profileId: string, originalError: unknown): Promise<ArrayBuffer> {
-    const fallbackUrl = `https://api.ageofempires.com/api/GameStats/AgeIV/GetMatchReplay?matchId=${encodeURIComponent(matchId)}&profileId=${encodeURIComponent(profileId)}`;
-    try {
-        const response = await fetch(fallbackUrl, {
-            headers: {
-                'User-Agent': UA,
-                'Accept': 'application/zip,application/octet-stream,*/*',
-            },
-        });
-        if (!response.ok)
-            throw new Error(`legacy_replay_${response.status}`);
-        return await response.arrayBuffer();
-    }
-    catch (fallbackError) {
-        const fallbackMessage = (fallbackError as { message?: string })?.message || String(fallbackError);
-        dbgWarn('[replay] Legacy replay fallback failed:', fallbackMessage, 'after', (originalError as { message?: string })?.message || String(originalError));
-        throw new Error(fallbackMessage.startsWith('legacy_replay_') ? fallbackMessage : 'legacy_replay_failed');
-    }
 }
 async function parseReplayPlayersFromArrayBuffer(arrayBuffer: ArrayBuffer, matchId: string): Promise<PlayerColorInfo[]> {
     let players: PlayerColorInfo[];

@@ -7,7 +7,6 @@
   "permissions": ["storage", "nativeMessaging"],
   "host_permissions": [
     "https://aoe-api.worldsedgelink.com/*",
-    "https://api.ageofempires.com/*",
     "https://rl0aoelivemk2blob.blob.core.windows.net/*"
   ],
   "background": {

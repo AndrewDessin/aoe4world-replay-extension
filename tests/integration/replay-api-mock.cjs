@@ -23,7 +23,6 @@ async function installReplayApiMock(bg, options = {}) {
       const originalFetch = globalThis.fetch.bind(globalThis);
       const state = {
         replayMetadataCalls: 0,
-        legacyReplayCalls: 0,
         blobReplayCalls: 0,
       };
       globalThis.__aoe4ReplayApiMockState = state;
@@ -82,14 +81,6 @@ async function installReplayApiMock(bg, options = {}) {
             });
           }
 
-          return new Response(replayBytes.slice(), {
-            status: 200,
-            headers: { 'content-type': 'application/zip' },
-          });
-        }
-
-        if (href.includes('api.ageofempires.com') && href.includes('GetMatchReplay')) {
-          state.legacyReplayCalls++;
           return new Response(replayBytes.slice(), {
             status: 200,
             headers: { 'content-type': 'application/zip' },
