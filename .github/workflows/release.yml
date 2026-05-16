@@ -85,14 +85,86 @@ jobs:
           generate_release_notes: true
 
       - name: Publish to Chrome Web Store
-        uses: mnao305/chrome-extension-upload@v5.0.0
-        with:
-          file-path: chrome-extension-store.zip
-          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
-          client-id: ${{ secrets.CHROME_CLIENT_ID }}
-          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
-          publish: true
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFile } from 'node:fs/promises';
+
+          const required = ['EXTENSION_ID', 'CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN'];
+          for (const key of required) {
+            if (!process.env[key]) throw new Error(`Missing ${key}`);
+          }
+
+          async function readJsonResponse(response) {
+            const text = await response.text();
+            console.log(text);
+            try {
+              return text ? JSON.parse(text) : {};
+            } catch {
+              return { raw: text };
+            }
+          }
+
+          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.CLIENT_ID,
+              client_secret: process.env.CLIENT_SECRET,
+              refresh_token: process.env.REFRESH_TOKEN,
+              grant_type: 'refresh_token',
+            }),
+          });
+          if (!tokenResponse.ok) {
+            console.error(`Token request failed: HTTP ${tokenResponse.status}`);
+            await readJsonResponse(tokenResponse);
+            process.exit(1);
+          }
+          const { access_token: accessToken } = await tokenResponse.json();
+          if (!accessToken) throw new Error('Token response did not include access_token');
+
+          const zip = await readFile('chrome-extension-store.zip');
+          const uploadResponse = await fetch(
+            `https://www.googleapis.com/upload/chromewebstore/v1.1/items/${process.env.EXTENSION_ID}`,
+            {
+              method: 'PUT',
+              headers: {
+                authorization: `Bearer ${accessToken}`,
+                'x-goog-api-version': '2',
+                'content-type': 'application/zip',
+              },
+              body: zip,
+            },
+          );
+          console.log(`Upload response: HTTP ${uploadResponse.status}`);
+          const uploadResult = await readJsonResponse(uploadResponse);
+          if (!uploadResponse.ok || uploadResult.uploadState === 'FAILURE') {
+            console.error('Chrome Web Store upload failed');
+            process.exit(1);
+          }
+
+          const publishResponse = await fetch(
+            `https://www.googleapis.com/chromewebstore/v1.1/items/${process.env.EXTENSION_ID}/publish?publishTarget=default`,
+            {
+              method: 'POST',
+              headers: {
+                authorization: `Bearer ${accessToken}`,
+                'x-goog-api-version': '2',
+                'content-length': '0',
+              },
+            },
+          );
+          console.log(`Publish response: HTTP ${publishResponse.status}`);
+          const publishResult = await readJsonResponse(publishResponse);
+          if (!publishResponse.ok || publishResult.status?.some?.(status => status === 'ITEM_PENDING_REVIEW' || status === 'OK') === false) {
+            console.error('Chrome Web Store publish failed');
+            process.exit(1);
+          }
+          EOF
 
   launcher:
     name: Native Replay Launcher
