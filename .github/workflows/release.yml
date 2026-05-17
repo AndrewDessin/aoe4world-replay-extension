@@ -87,17 +87,17 @@ jobs:
       - name: Publish to Chrome Web Store
         env:
           EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.CHROME_SERVICE_ACCOUNT_JSON }}
           CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
           node --input-type=module <<'EOF'
           import { readFile } from 'node:fs/promises';
+          import { createSign } from 'node:crypto';
 
-          const required = ['EXTENSION_ID', 'CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN'];
-          for (const key of required) {
-            if (!process.env[key]) throw new Error(`Missing ${key}`);
-          }
+          if (!process.env.EXTENSION_ID) throw new Error('Missing EXTENSION_ID');
 
           async function readJsonResponse(response) {
             const text = await response.text();
@@ -109,31 +109,98 @@ jobs:
             }
           }
 
-          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'content-type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              client_id: process.env.CLIENT_ID,
-              client_secret: process.env.CLIENT_SECRET,
-              refresh_token: process.env.REFRESH_TOKEN,
-              grant_type: 'refresh_token',
-            }),
-          });
-          if (!tokenResponse.ok) {
-            console.error(`Token request failed: HTTP ${tokenResponse.status}`);
-            await readJsonResponse(tokenResponse);
-            process.exit(1);
+          function base64Url(value) {
+            return Buffer.from(value)
+              .toString('base64')
+              .replaceAll('+', '-')
+              .replaceAll('/', '_')
+              .replaceAll('=', '');
           }
-          const { access_token: accessToken } = await tokenResponse.json();
-          if (!accessToken) throw new Error('Token response did not include access_token');
+
+          async function getServiceAccountAccessToken() {
+            if (!process.env.SERVICE_ACCOUNT_JSON || !process.env.PUBLISHER_ID) return null;
+
+            let serviceAccount;
+            try {
+              serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_JSON);
+            } catch (error) {
+              throw new Error(`CHROME_SERVICE_ACCOUNT_JSON is not valid JSON: ${error.message}`);
+            }
+            if (!serviceAccount.client_email || !serviceAccount.private_key) {
+              throw new Error('CHROME_SERVICE_ACCOUNT_JSON must include client_email and private_key');
+            }
+
+            const now = Math.floor(Date.now() / 1000);
+            const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+            const claimSet = base64Url(JSON.stringify({
+              iss: serviceAccount.client_email,
+              scope: 'https://www.googleapis.com/auth/chromewebstore',
+              aud: serviceAccount.token_uri || 'https://oauth2.googleapis.com/token',
+              exp: now + 3600,
+              iat: now,
+            }));
+            const unsignedJwt = `${header}.${claimSet}`;
+            const signature = createSign('RSA-SHA256')
+              .update(unsignedJwt)
+              .sign(serviceAccount.private_key);
+            const assertion = `${unsignedJwt}.${base64Url(signature)}`;
+
+            const tokenResponse = await fetch(serviceAccount.token_uri || 'https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'content-type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                assertion,
+              }),
+            });
+            if (!tokenResponse.ok) {
+              console.error(`Service account token request failed: HTTP ${tokenResponse.status}`);
+              await readJsonResponse(tokenResponse);
+              process.exit(1);
+            }
+            const { access_token: accessToken } = await tokenResponse.json();
+            if (!accessToken) throw new Error('Service account token response did not include access_token');
+            return { accessToken, apiVersion: 'v2' };
+          }
+
+          async function getOAuthAccessToken() {
+            const required = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN'];
+            for (const key of required) {
+              if (!process.env[key]) throw new Error(`Missing ${key}; add CHROME_SERVICE_ACCOUNT_JSON and CHROME_PUBLISHER_ID or refresh OAuth secrets`);
+            }
+
+            const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'content-type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                client_id: process.env.CLIENT_ID,
+                client_secret: process.env.CLIENT_SECRET,
+                refresh_token: process.env.REFRESH_TOKEN,
+                grant_type: 'refresh_token',
+              }),
+            });
+            if (!tokenResponse.ok) {
+              console.error(`OAuth token request failed: HTTP ${tokenResponse.status}`);
+              await readJsonResponse(tokenResponse);
+              process.exit(1);
+            }
+            const { access_token: accessToken } = await tokenResponse.json();
+            if (!accessToken) throw new Error('OAuth token response did not include access_token');
+            return { accessToken, apiVersion: 'v1.1' };
+          }
+
+          const auth = await getServiceAccountAccessToken() || await getOAuthAccessToken();
 
           const zip = await readFile('chrome-extension-store.zip');
+          const uploadUrl = auth.apiVersion === 'v2'
+            ? `https://chromewebstore.googleapis.com/upload/v2/publishers/${process.env.PUBLISHER_ID}/items/${process.env.EXTENSION_ID}:upload`
+            : `https://www.googleapis.com/upload/chromewebstore/v1.1/items/${process.env.EXTENSION_ID}`;
           const uploadResponse = await fetch(
-            `https://www.googleapis.com/upload/chromewebstore/v1.1/items/${process.env.EXTENSION_ID}`,
+            uploadUrl,
             {
-              method: 'PUT',
+              method: auth.apiVersion === 'v2' ? 'POST' : 'PUT',
               headers: {
-                authorization: `Bearer ${accessToken}`,
+                authorization: `Bearer ${auth.accessToken}`,
                 'x-goog-api-version': '2',
                 'content-type': 'application/zip',
               },
@@ -147,12 +214,15 @@ jobs:
             process.exit(1);
           }
 
+          const publishUrl = auth.apiVersion === 'v2'
+            ? `https://chromewebstore.googleapis.com/v2/publishers/${process.env.PUBLISHER_ID}/items/${process.env.EXTENSION_ID}:publish`
+            : `https://www.googleapis.com/chromewebstore/v1.1/items/${process.env.EXTENSION_ID}/publish?publishTarget=default`;
           const publishResponse = await fetch(
-            `https://www.googleapis.com/chromewebstore/v1.1/items/${process.env.EXTENSION_ID}/publish?publishTarget=default`,
+            publishUrl,
             {
               method: 'POST',
               headers: {
-                authorization: `Bearer ${accessToken}`,
+                authorization: `Bearer ${auth.accessToken}`,
                 'x-goog-api-version': '2',
                 'content-length': '0',
               },
